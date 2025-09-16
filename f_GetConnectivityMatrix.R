@@ -3,9 +3,8 @@
   # matrix Connectivity: dimensions npatch x npatch
   # Connectivity[i,j] = the proportion of dispersers from patch j that land in patch i
 
-f_GetConnectivityMatrix <- function(lambda=1, patch_dists, patch_thetas){
-  connectivity_matrix <- (pexp(patch_dists+0.5,lambda)-pexp(patch_dists-0.5,lambda))*patch_thetas
-  
+f_GetConnectivityMatrix <- function(alpha, theta, patch_dists, patch_angles){
+  connectivity_matrix <- (pgamma(patch_dists+0.5,shape=alpha,scale=theta)-pgamma(patch_dists-0.5,shape=alpha,scale=theta))*patch_angles
 }
 
 # sample simple kernel function (though I think we'll just use the built-in gamma function eventually)

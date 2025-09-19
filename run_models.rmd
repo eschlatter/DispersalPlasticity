@@ -42,7 +42,7 @@ mu <- 0.01 # mutation frequency
 ```{r}
 b <- 2
 
-matrix_out <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=60)
+matrix_out <- f_RunMatrixSim2(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=60)
 
 f_PlotOutput(matrix_out)
 

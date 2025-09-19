@@ -1,4 +1,4 @@
-f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=50){
+f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=1){
   
   ########## Data structures to describe space and dispersal ##########
   hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
@@ -25,7 +25,7 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
   # initialize starting population
   # currently 1 individual (whatever that means) per patch
   # everybody starts with the same kernel and p
-  sim_array[,alpha_start,theta_start,p_start,1] <- K+10
+  sim_array[,alpha_start,theta_start,p_start,1] <- K
   
   for(t in 2:nsteps){
     # reproduction and dispersal and mutation (each patch contributes to other patches)
@@ -62,7 +62,6 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
     # want to cap the population of each patch, probably at 1 for now.
     # so, if the patch has population greater than 1, scale the value in each box by 1/(sum of all boxes for that patch)
     pop_by_patch <- apply(sim_array[,,,,t],1,sum)
-    
     pop_by_patch <- pmax(K,pop_by_patch) # scale by 1 (leave it alone) if population of a patch is less than 1
     sim_array[,,,,t] <- sweep(sim_array[,,,,t],MARGIN=1,FUN='/',STATS=pop_by_patch/K) # scale by patch population
   } # t

@@ -1,6 +1,6 @@
 library(tidyverse)
 
-source('f_GetConnectivityMatrix.R')
+source('sim_functions.R')
 
 ########## Parameters ##########
 nx <- 10 # size of space in the x dimension
@@ -22,59 +22,19 @@ delta <- 0.001 # mutation magnitude
 b <- 1.1 # number of offspring per parent
 
 ########## Data structures to describe space and dispersal ##########
-
-# list of patch locations and IDs
-# (dimensions npatch x 3)
-# "location" is the center of the patch
-patch_locations <- expand.grid(x=1:nx,y=1:ny) %>%
-  rowid_to_column(var='id')
-  # this is a simple version of patch_locations (all the squares of a grid); eventually we'll want to import a map.
-  # I think we'll be able to just keep track of reef patches, not open ocean
-npatch <- nrow(patch_locations)
-
-# a "map" of the patch numbers, spatially arranged
-# (dimensions nx x ny)
-patch_map <- matrix(nrow=ny,ncol=nx)
-for(i in 1:npatch){
-  patch_map[patch_locations$y[i],patch_locations$x[i]] <- patch_locations$id[i]
-}
-
-# a matrix of distances between the centers of each patch (i.e., r in polar coords)
-# (dimensions npatch x npatch)
-patch_dists <- matrix(nrow=npatch,ncol=npatch)
-colnames(patch_dists) <- patch_locations$id
-for(i in 1:npatch){
-  patch_dists[i,] = sqrt((patch_locations$x[i]-patch_locations$x)^2+(patch_locations$y[i]-patch_locations$y)^2)
-}
-
-# a matrix of the size of the pie wedge between each patch (i.e., theta in polar coords -- not theta of the dispersal kernel)
-# assuming the width of the cell at the given distance is 1: not quite correct most of the time, but probably close enough
-# (dimensions npatch x npatch)
-patch_angles <- 2*asin(1/(2*patch_dists))/(2*pi)
-patch_angles[is.nan(patch_angles)] <- 1
-
-#check: proportion of individuals from each patch that land in a patch (same configuration as patch_map).
-# Shouldn't be greater than 1 anywhere, and should be smaller where fewer patches are reachable.
-cm <- f_GetConnectivityMatrix(1,2,patch_dists,patch_angles)
-t(matrix(rowSums(cm),nrow=5)) 
-
-# connectivity matrices
-# (dimensions nalpha x ntheta x npatch x npatch)
-# Should we calculate them for each possible kernel up front?
-# There are probably some kernels that won't get used, so this might be a bit wasteful. But, for now, let's do it. We can be more efficient later.
-# Should we allow kernels to evolve past the predefined ones? Maybe. (Probably?) Let's implement this later on.
-conn_matrices <- array(NA,dim=c(length(v_alphas),length(v_thetas),npatch,npatch))
-for(i_alpha in 1:length(v_alphas)){
-  for(i_theta in 1:length(v_thetas)){
-    conn_matrices[i_alpha,i_theta,,] <- f_GetConnectivityMatrix(v_alphas[i_alpha],v_thetas[i_theta],patch_dists,patch_angles)
-  } # i_theta
-} # i_alpha
+hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
+patch_locations <- hab$patch_locations
+patch_map <- hab$patch_map
+patch_dists <- hab$patch_dists
+patch_angles <- hab$patch_angles
+conn_matrices <- hab$conn_matrices
+npatch <- hab$npatch
+rm(hab)
 
 ########## Data structure to describe population ##########
 
-# population tracking array
-# dimensions:
-# 1: location
+# dimensions: npatch x length(v_alphas) x length(v_thetas) x length(v_p) x nsteps
+# 1: location (patch id)
 # 2: alpha (kernel shape parameter)
 # 3: theta (kernel scale parameter)
 # 4: p (plasticity parameter)
@@ -94,25 +54,26 @@ for(t in 2:nsteps){
     for(i_theta in 1:length(v_thetas)){
       cm <- conn_matrices[i_alpha,i_theta,,]
       for(i_patch in 1:npatch){
-        patch_pop <- sim_array[i_patch,i_alpha,i_theta,p_start,t-1]
+        cell_popsize <- sim_array[i_patch,i_alpha,i_theta,p_start,t-1]
+        
         # no mutation
-        sim_array[,i_alpha,i_theta,p_start,t] <- b*patch_pop*(1-mu)*cm[i_patch,] + sim_array[,i_alpha,i_theta,p_start,t]
+        sim_array[,i_alpha,i_theta,p_start,t] <- b*cell_popsize*(1-mu)*cm[i_patch,] + sim_array[,i_alpha,i_theta,p_start,t]
         
         # mutation
         # "absorbing boundaries" at the edge of allowable kernel parameters
         # surely there's a more efficient way to do this, but we'll go with this for now
         if(i_alpha!=length(v_alphas)){
-          sim_array[,i_alpha+1,i_theta,p_start,t] <- b*patch_pop*(mu/4)*cm[i_patch] + sim_array[,i_alpha+1,i_theta,p_start,t]
+          sim_array[,i_alpha+1,i_theta,p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch] + sim_array[,i_alpha+1,i_theta,p_start,t]
         }
         if(i_alpha!=1){
-          sim_array[,i_alpha-1,i_theta,p_start,t] <- b*patch_pop*(mu/4)*cm[i_patch] + sim_array[,i_alpha-1,i_theta,p_start,t]
+          sim_array[,i_alpha-1,i_theta,p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch] + sim_array[,i_alpha-1,i_theta,p_start,t]
         }
         # mutation to theta
         if(i_theta!=length(v_thetas)){
-          sim_array[,i_alpha,i_theta+1,p_start,t] <- b*patch_pop*(mu/4)*cm[i_patch] + sim_array[,i_alpha,i_theta+1,p_start,t]
+          sim_array[,i_alpha,i_theta+1,p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch] + sim_array[,i_alpha,i_theta+1,p_start,t]
         }
         if(i_theta!=1){
-          sim_array[,i_alpha,i_theta-1,p_start,t] <- b*patch_pop*(mu/4)*cm[i_patch] + sim_array[,i_alpha,i_theta-1,p_start,t]
+          sim_array[,i_alpha,i_theta-1,p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch] + sim_array[,i_alpha,i_theta-1,p_start,t]
         }
       } # i_patch
     } # i_theta
@@ -122,36 +83,71 @@ for(t in 2:nsteps){
   # want to cap the population of each patch, probably at 1 for now.
   # so, if the patch has population greater than 1, scale the value in each box by 1/(sum of all boxes for that patch)
   pop_by_patch <- apply(sim_array[,,,,t],1,sum)
-  for(i in 1:length(pop_by_patch)){
-    pop_by_patch[i] <- max(1,pop_by_patch[i])
-  }
-  sim_array[,,,,t] <- sim_array[,,,,t]/pop_by_patch
-  
+  pop_by_patch <- pmax(1,pop_by_patch) # scale by 1 (leave it alone) if population of a patch is less than 1
+  sim_array[,,,,t] <- sweep(sim_array[,,,,t],MARGIN=1,FUN='/',STATS=pop_by_patch) # scale by patch population
 } # t
 
-########## A little test output ##########
+########## Make some plots ##########
 
-# plot mean alpha and theta over time
-v_alphas_over_time <- apply(sim_array,c(2,5),sum)
-v_thetas_over_time <- apply(sim_array,c(3,5),sum)
+# process data for plotting
 
-test_alpha <- as.vector(v_alphas %*% v_alphas_over_time)/colSums(v_alphas_over_time)
-test_theta <- as.vector(v_thetas %*% v_thetas_over_time)/colSums(v_thetas_over_time)
+# melt into a dataframe with columns patch, timestep, alpha, theta, p, popsize
+dimnames(sim_array) <- list(patch_locations$id,
+                            v_alphas,
+                            v_thetas,
+                            v_p,
+                            1:nsteps)
+sim_melt <- array2DF(sim_array) %>% 
+  mutate(across(where(is.character), as.numeric))
+rm(sim_array)
+colnames(sim_melt) <- c('patch','alpha','theta','p','t','popsize')
 
-plot(1:nsteps,test_alpha,type='l',ylim=c(0,5))
-lines(1:nsteps,test_theta,type='l',col='blue')
+#param values at each time/patch/alpha/theta/p combo, scaled by the population size
+sim_melt <- mutate(sim_melt,
+                   alpha_scale=alpha*popsize,
+                   theta_scale=theta*popsize,
+                   p_scale=p*popsize)
 
-# plot kernel at the start and end
-xvals <- seq(from=0,to=20,by=0.01)
-plot(xvals,dgamma(xvals,shape=first(test_alpha),scale=first(test_theta)),type='l',lty='dashed',main='kernels',xlab='distance',ylab='probability',ylim=c(0,1))
-lines(xvals,dgamma(xvals,shape=last(test_alpha),scale=last(test_theta)),type='l')
+# mean param values within each patch at each timepoint
+sim_melt_params <- summarize(group_by(sim_melt,t,patch),
+                             alpha_mean=sum(alpha_scale),
+                             theta_mean=sum(theta_scale),
+                             popsize=sum(popsize))
 
-# plot population size over time
-pop_over_time <- apply(sim_array,5,sum)
-plot(1:nsteps,pop_over_time,type='l')
+# mean param values, averaged over patches
+by_t <- summarize(group_by(sim_melt_params,t),
+                  alpha=mean(alpha_mean),
+                  theta=mean(theta_mean),
+                  popsize=sum(popsize))
+
+#### another way to do exactly what sim_melt --> sim_melt_params --> by_t does
+# # at each time/patch/param value, proportion of individuals in each patch with that param value (summed over the other params)
+# alphas <- summarize(group_by(sim_melt,t,patch,alpha),popsize=sum(popsize))
+# thetas <- summarize(group_by(sim_melt,t,patch,theta),popsize=sum(popsize))
+# 
+# # at each time/site, mean parameter value
+# # then, at each time, mean param value over all sites
+# alphas <- group_by(alphas,t,patch) %>%
+#   summarize(alpha_mean=sum(popsize*alpha)) %>% # mean = sum of (frequency times parameter value)
+#   summarize(alpha_mean_oversites=mean(alpha_mean))
+# 
+# thetas <- group_by(thetas,t,patch) %>%
+#   summarize(theta_mean=sum(popsize*theta)) %>% # mean = sum of (frequency times parameter value)
+#   summarize(theta_mean_oversites=mean(theta_mean))
 
 
-# plot kernel at the start and end
-xvals <- seq(from=0,to=2,by=0.01)
-plot(xvals,dgamma(xvals,shape=0.485,scale=0.152),type='l',lty='dashed',main='kernels',xlab='distance',ylab='probability',ylim=c(0,10))
-lines(xvals,dgamma(xvals,shape=last(test_alpha),scale=last(test_theta)),type='l')
+# plots
+ggplot(by_t,aes(x=t))+
+  geom_line(aes(y=alpha,color='alpha'))+
+  geom_line(aes(y=theta,color='theta'))+
+  labs(title='kernel parameters')
+
+ggplot()+
+  xlim(0,25)+
+  geom_function(fun=dgamma, args=list(shape=first(by_t$alpha),scale=first(by_t$theta)),aes(lty='first'))+
+  geom_function(fun=dgamma, args=list(shape=last(by_t$alpha),scale=last(by_t$theta)),aes(lty='last'))+
+  labs(title='kernels')
+
+ggplot(by_t,aes(x=t,y=popsize))+
+  geom_line()+
+  labs(title='population size')

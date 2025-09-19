@@ -1,20 +1,20 @@
 library(tidyverse)
 library(scales)
 
-source('f_GetConnectivityMatrix.R')
+source('sim_functions.R')
 
 ########## Parameters ##########
 nx <- 10 # size of space in the x dimension
 ny <- 10 # size of space in the y dimension
 
-nsteps <- 50 # timesteps
+nsteps <- 1000 # timesteps
 
-v_alphas <- seq(from=0.1,to=5,length.out=20) # values the shape parameter can take
-v_thetas <- seq(from=0.1,to=5,length.out=20) # values the scale parameter can take
-alpha_start <- 20 # index (in v_alphas) of shape parameter initial value
-theta_start <- 20 # index in (v_thetas) of scale parameter initial value
+v_alphas <- seq(from=0.1,to=5,length.out=5) # values the shape parameter can take
+v_thetas <- seq(from=0.1,to=5,length.out=5) # values the scale parameter can take
+alpha_start <- 1 # index (in v_alphas) of shape parameter initial value
+theta_start <- 1 # index in (v_thetas) of scale parameter initial value
 
-v_p <- seq(from=0,to=0.9,length.out=10)
+v_p <- seq(from=0,to=0.9,length.out=10) # values the plasticity parameter can take
 p_start <- 1 # index (in v_p) of plasticity parameter initial value
 
 mu <- 0.01 # mutation frequency
@@ -23,48 +23,14 @@ delta <- 0.001 # mutation magnitude
 b <- 2 # number of offspring per parent
 
 ########## Data structures to describe space and dispersal ##########
-
-# list of patch locations and IDs
-# (dimensions npatch x 3)
-# "location" is the center of the patch
-patch_locations <- expand.grid(x=1:nx,y=1:ny) %>%
-  rowid_to_column(var='id')
-# this is a simple version of patch_locations (all the squares of a grid); eventually we'll want to import a map.
-# I think we'll be able to just keep track of reef patches, not open ocean
-npatch <- nrow(patch_locations)
-
-# a "map" of the patch numbers, spatially arranged
-# (dimensions nx x ny)
-patch_map <- matrix(nrow=ny,ncol=nx)
-for(i in 1:npatch){
-  patch_map[patch_locations$y[i],patch_locations$x[i]] <- patch_locations$id[i]
-}
-
-# a matrix of distances between the centers of each patch (i.e., r in polar coords)
-# (dimensions npatch x npatch)
-patch_dists <- matrix(nrow=npatch,ncol=npatch)
-colnames(patch_dists) <- patch_locations$id
-for(i in 1:npatch){
-  patch_dists[i,] = sqrt((patch_locations$x[i]-patch_locations$x)^2+(patch_locations$y[i]-patch_locations$y)^2)
-}
-
-# a matrix of the size of the pie wedge between each patch (i.e., theta in polar coords -- not theta of the dispersal kernel)
-# assuming the width of the cell at the given distance is 1: not quite correct most of the time, but probably close enough
-# (dimensions npatch x npatch)
-patch_angles <- 2*asin(1/(2*patch_dists))/(2*pi)
-patch_angles[is.nan(patch_angles)] <- 1
-
-# connectivity matrices
-# (dimensions nalpha x ntheta x npatch x npatch)
-# Should we calculate them for each possible kernel up front?
-# There are probably some kernels that won't get used, so this might be a bit wasteful. But, for now, let's do it. We can be more efficient later.
-# Should we allow kernels to evolve past the predefined ones? Maybe. (Probably?) Let's implement this later on.
-conn_matrices <- array(NA,dim=c(length(v_alphas),length(v_thetas),npatch,npatch))
-for(i_alpha in 1:length(v_alphas)){
-  for(i_theta in 1:length(v_thetas)){
-    conn_matrices[i_alpha,i_theta,,] <- f_GetConnectivityMatrix(v_alphas[i_alpha],v_thetas[i_theta],patch_dists,patch_angles)
-  } # i_theta
-} # i_alpha
+hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
+patch_locations <- hab$patch_locations
+patch_map <- hab$patch_map
+patch_dists <- hab$patch_dists
+patch_angles <- hab$patch_angles
+conn_matrices <- hab$conn_matrices
+npatch <- hab$npatch
+rm(hab)
 
 ########## Simulation ##########
 
@@ -113,7 +79,11 @@ pop <- mutate(pop,alpha_value=v_alphas[alpha],theta_value=v_thetas[theta])
 
 ########## Make some plots ##########
 
+# process data for plotting (just summarize each timestep)
 by_t <- summarize(group_by(pop,t),alpha=mean(alpha_value),theta=mean(theta_value),popsize=n())
+
+
+# plots
 
 ggplot(by_t,aes(x=t))+
   geom_line(aes(y=alpha,color='alpha'))+
@@ -122,14 +92,11 @@ ggplot(by_t,aes(x=t))+
 
 ggplot()+
   xlim(0,25)+
-  geom_function(fun=dgamma, args=list(shape=first(by_t$alpha),scale=first(by_t$theta)),aes(color='first'))+
-  geom_function(fun=dgamma, args=list(shape=last(by_t$alpha),scale=last(by_t$theta)),aes(color='last'))+
+  geom_function(fun=dgamma, args=list(shape=first(by_t$alpha),scale=first(by_t$theta)),aes(lty='first'))+
+  geom_function(fun=dgamma, args=list(shape=last(by_t$alpha),scale=last(by_t$theta)),aes(lty='last'))+
   labs(title='kernels')
 
 ggplot(by_t,aes(x=t,y=popsize))+
   geom_line()+
   labs(title='population size')
-
-
-
 

@@ -1,3 +1,24 @@
+f_PlotOutput <- function(by_t){
+  p1 <- ggplot(by_t,aes(x=t))+
+    geom_line(aes(y=alpha,color='alpha'))+
+    geom_line(aes(y=theta,color='theta'))+
+    labs(title='kernel parameters',y='value')+
+    theme(legend.position = 'top')
+  
+  p2 <- ggplot()+
+    xlim(0,25)+
+    geom_function(fun=dgamma, args=list(shape=first(by_t$alpha),scale=first(by_t$theta)),aes(lty='first'))+
+    geom_function(fun=dgamma, args=list(shape=last(by_t$alpha),scale=last(by_t$theta)),aes(lty='last'))+
+    labs(title='kernels',x='distance',y='density')+
+    theme(legend.position = 'top')
+  
+  p3 <- ggplot(by_t,aes(x=t,y=popsize))+
+    geom_line()+
+    labs(title='population size')
+  
+  grid.arrange(p1,p2,p3,nrow=1)
+}
+
 f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas){
   # list of patch locations and IDs
   # (dimensions npatch x 3)

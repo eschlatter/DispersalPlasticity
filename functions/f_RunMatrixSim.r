@@ -39,22 +39,14 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
           sim_array[,i_alpha,i_theta,p_start,t] <- b*cell_popsize*(1-mu)*cm[i_patch,] + sim_array[,i_alpha,i_theta,p_start,t]
           
           # mutation
-          ######## does this need to happen outside the i_patch loop???
-          # "absorbing boundaries" at the edge of allowable kernel parameters
+          # boundaries at the edge of allowable kernel params: collecting
+          # (e.g., at minimum value of alpha, if mutation would lead to lower alpha, it just keeps the minimum)
           # surely there's a more efficient way to do this, but we'll go with this for now
-          if(i_alpha!=length(v_alphas)){
-            sim_array[,i_alpha+1,i_theta,p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch] + sim_array[,i_alpha+1,i_theta,p_start,t]
-          }
-          if(i_alpha!=1){
-            sim_array[,i_alpha-1,i_theta,p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch] + sim_array[,i_alpha-1,i_theta,p_start,t]
-          }
-          # mutation to theta
-          if(i_theta!=length(v_thetas)){
-            sim_array[,i_alpha,i_theta+1,p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch] + sim_array[,i_alpha,i_theta+1,p_start,t]
-          }
-          if(i_theta!=1){
-            sim_array[,i_alpha,i_theta-1,p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch] + sim_array[,i_alpha,i_theta-1,p_start,t]
-          }
+          sim_array[,min(i_alpha+1,length(v_alphas)),i_theta,p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch,] + sim_array[,min(i_alpha+1,length(v_alphas)),i_theta,p_start,t]
+          sim_array[,max(1,i_alpha-1),i_theta,p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch,] + sim_array[,max(1,i_alpha-1),i_theta,p_start,t]
+          sim_array[,i_alpha,min(i_theta+1,length(v_thetas)),p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch,] + sim_array[,i_alpha,min(i_theta+1,length(v_thetas)),p_start,t]
+          sim_array[,i_alpha,max(1,i_theta-1),p_start,t] <- b*cell_popsize*(mu/4)*cm[i_patch,] + sim_array[,i_alpha,max(1,i_theta-1),p_start,t]
+          
         } # i_patch
       } # i_theta
     } # i_alpha
@@ -63,8 +55,8 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
     # want to cap the population of each patch, probably at 1 for now.
     # so, if the patch has population greater than 1, scale the value in each box by 1/(sum of all boxes for that patch)
     pop_by_patch <- apply(sim_array[,,,,t],1,sum)
-    pop_by_patch <- pmax(K,pop_by_patch) # scale by 1 (leave it alone) if population of a patch is less than 1
-    sim_array[,,,,t] <- sweep(sim_array[,,,,t],MARGIN=1,FUN='/',STATS=pop_by_patch/K) # scale by patch population
+    pop_by_patch <- pmax(K,pop_by_patch) # scale by 1 (leave it alone) if population of a patch is less than K
+    sim_array[,,,,t] <- sweep(sim_array[,,,,t],MARGIN=1,FUN='/',STATS=pop_by_patch/K) # scale by total patch population (relative to K)
   } # t
   
   ########## Process data for plotting ##########
@@ -93,5 +85,5 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
   by_t <- mutate(by_t, alpha=alpha/popsize, theta=theta/popsize)
   
   ########## Output ##########
-  return(by_t)
+  return(list(sim_melt,by_t))
 }

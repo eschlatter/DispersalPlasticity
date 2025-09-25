@@ -55,5 +55,5 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
   by_t <- summarize(group_by(pop,t),alpha=mean(alpha_value),theta=mean(theta_value),popsize=n())
   
   ########## Output ##########
-  return(by_t)
+  return(list(pop,by_t))
 }

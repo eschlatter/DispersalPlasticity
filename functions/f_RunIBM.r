@@ -36,7 +36,7 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
     # mutation
     alpha_adds <- sample(c(0,1,-1),size=nrow(larvae),replace=TRUE,prob=c(1-mu/2,mu/4,mu/4))
     theta_adds <- sample(c(0,1,-1),size=nrow(larvae),replace=TRUE,prob=c(1-mu/2,mu/4,mu/4))
-    larvae$alpha <- oob_squish(larvae$alpha + alpha_adds, c(1,length(v_alphas)))
+    larvae$alpha <- oob_squish(larvae$alpha + alpha_adds, c(1,length(v_alphas))) # bound each alpha index so it's >=1 and <= length(v_alphas)
     larvae$theta <- oob_squish(larvae$theta + theta_adds, c(1,length(v_thetas)))
     
     # competition

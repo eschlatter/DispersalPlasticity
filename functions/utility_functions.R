@@ -1,19 +1,26 @@
-f_PlotOutput <- function(by_t){
+library(gridExtra)
+
+f_PlotOutput <- function(by_t,plot_t,kern_xlim=25){
   p1 <- ggplot(by_t,aes(x=t))+
     geom_line(aes(y=alpha,color='alpha'))+
     geom_line(aes(y=theta,color='theta'))+
     labs(title='kernel parameters',y='value')+
+    theme_minimal()+
     theme(legend.position = 'top')
   
   p2 <- ggplot()+
-    xlim(0,25)+
+    xlim(0,kern_xlim)+
     geom_function(fun=dgamma, args=list(shape=first(by_t$alpha),scale=first(by_t$theta)),aes(lty='first'))+
-    geom_function(fun=dgamma, args=list(shape=last(by_t$alpha),scale=last(by_t$theta)),aes(lty='last'))+
-    labs(title='kernels',x='distance',y='density')+
-    theme(legend.position = 'top')
+    lapply(plot_t, function(i){geom_function(fun=dgamma,args=list(shape=by_t$alpha[i],scale=by_t$theta[i]),alpha=0.15,color='darkgray')})+
+    geom_function(fun=dgamma,args=list(shape=median(by_t$alpha[plot_t]),scale=median(by_t$theta[plot_t])),color='black',lwd=0.75,aes(lty='last'))+
+    scale_linetype_manual(values=c('first' = 'dashed',
+                                   'last' = 'solid'),name='Kernel')+
+    theme_minimal()+
+    theme(legend.position='top')
   
   p3 <- ggplot(by_t,aes(x=t,y=popsize))+
     geom_line()+
+    theme_minimal()+
     labs(title='population size')
   
   grid.arrange(p1,p2,p3,nrow=1)

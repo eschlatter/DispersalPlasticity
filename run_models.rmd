@@ -7,6 +7,7 @@ date: "2025-09-19"
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(scales)
+library(gridExtra)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSim.R')
@@ -44,7 +45,7 @@ b <- 2
 
 matrix_out <- f_RunMatrixSim2(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=60)
 
-f_PlotOutput(matrix_out)
+f_PlotOutput(matrix_out,plot_t=nrow(matrix_out),kern_xlim=5)
 
 tail(matrix_out)
 ```
@@ -55,6 +56,31 @@ tail(matrix_out)
 b <- 2
 IBM_out <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b)
 
-f_PlotOutput(IBM_out)
+f_PlotOutput(IBM_out, plot_t=900:1000)
 ```
+Run the IBM multiple times, to see if we get the same result
+```{r}
+b <- 2
+
+kerns <- data.frame(alpha=NA,theta=NA)
+sims <- list()
+
+for(rep_i in 1:10){
+  IBM_out <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b)
+  sims[[rep_i]] <- IBM_out
+  
+  kerns[rep_i,] <- data.frame(alpha=median(IBM_out$alpha[round(0.6*nsteps):nsteps]),theta=median(IBM_out$theta[round(0.6*nsteps):nsteps]))
+}
+
+ggplot()+
+  xlim(0,25)+
+  geom_function(fun=dgamma, args=list(shape=v_alphas[alpha_start],scale=v_thetas[theta_start]),aes(lty='first'))+
+  lapply(1:nrow(kerns), function(i){geom_function(fun=dgamma,args=list(shape=kerns$alpha[i],scale=kerns$theta[i]),color='darkgray',aes(lty='last'))})+
+  geom_function(fun=dgamma,args=list(shape=median(kerns$alpha),scale=median(kerns$theta)),color='black',lwd=0.75,aes(lty='last'))+
+  scale_linetype_manual(values=c('first' = 'dashed',
+                                 'last' = 'solid'),name='Kernel')+
+  theme_minimal()+
+  theme(legend.position='top')
+```
+
 

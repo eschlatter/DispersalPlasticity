@@ -39,6 +39,7 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
           sim_array[,i_alpha,i_theta,p_start,t] <- b*cell_popsize*(1-mu)*cm[i_patch,] + sim_array[,i_alpha,i_theta,p_start,t]
           
           # mutation
+          ######## does this need to happen outside the i_patch loop???
           # "absorbing boundaries" at the edge of allowable kernel parameters
           # surely there's a more efficient way to do this, but we'll go with this for now
           if(i_alpha!=length(v_alphas)){

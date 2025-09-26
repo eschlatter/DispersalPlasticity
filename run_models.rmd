@@ -11,15 +11,15 @@ library(gridExtra)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSim.R')
-source('functions/f_RunMatrixSim2.R')
+source('functions/f_RunMatrixSim_reversed.R')
 source('functions/utility_functions.R')
 ```
 
 # Parameters
 
 ```{r}
-nx <- 10 # size of space in the x dimension
-ny <- 10 # size of space in the y dimension
+nx <- 50 # size of space in the x dimension
+ny <- 50 # size of space in the y dimension
 
 nsteps <- 1000 # timesteps
 

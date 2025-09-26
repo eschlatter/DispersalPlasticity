@@ -1,6 +1,6 @@
 library(gridExtra)
 
-f_PlotOutput <- function(by_t,plot_t,kern_xlim=25){
+f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25){
   p1 <- ggplot(by_t,aes(x=t))+
     geom_line(aes(y=alpha,color='alpha'))+
     geom_line(aes(y=theta,color='theta'))+
@@ -11,12 +11,13 @@ f_PlotOutput <- function(by_t,plot_t,kern_xlim=25){
   p2 <- ggplot()+
     xlim(0,kern_xlim)+
     geom_function(fun=dgamma, args=list(shape=first(by_t$alpha),scale=first(by_t$theta)),aes(lty='first'))+
-    lapply(plot_t, function(i){geom_function(fun=dgamma,args=list(shape=by_t$alpha[i],scale=by_t$theta[i]),alpha=0.15,color='darkgray')})+
-    geom_function(fun=dgamma,args=list(shape=median(by_t$alpha[plot_t]),scale=median(by_t$theta[plot_t])),color='black',lwd=0.75,aes(lty='last'))+
+    lapply(kern_timesteps, function(i){geom_function(fun=dgamma,args=list(shape=by_t$alpha[i],scale=by_t$theta[i]),alpha=0.5,color='darkgray')})+
+    geom_function(fun=dgamma,args=list(shape=median(by_t$alpha[kern_timesteps]),scale=median(by_t$theta[kern_timesteps])),color='black',lwd=0.75,aes(lty='last'))+
     scale_linetype_manual(values=c('first' = 'dashed',
-                                   'last' = 'solid'),name='Kernel')+
+                                   'last' = 'solid'))+
     theme_minimal()+
-    theme(legend.position='top')
+    theme(legend.position='top')+
+    labs(x='distance',y='density',title='Kernel')
   
   p3 <- ggplot(by_t,aes(x=t,y=popsize))+
     geom_line()+

@@ -1,5 +1,5 @@
 # same as the other one, but switch the order of mutation and dispersal
-f_RunMatrixSim2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b, K=1){
+f_RunMatrixSim_reversed <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b, K=1){
   
   ########## Data structures to describe space and dispersal ##########
   hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
@@ -38,22 +38,18 @@ f_RunMatrixSim2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
         for(i_patch in 1:npatch){
           cell_popsize <- sim_array[i_patch,i_alpha,i_theta,p_start,t-1]
           
-          # "absorbing boundaries" at the edge of allowable kernel parameters
+          # add a little stochasticity
+          epsis_m <- runif(3,min=-mu/10,max=mu/10)
+          epsis_m <- c(epsis_m,0-sum(epsis_m))
+          
+          # boundaries at the edge of allowable kernel params: collecting
+          # (e.g., at minimum value of alpha, if mutation would lead to lower alpha, it just keeps the minimum)
           # surely there's a more efficient way to do this, but we'll go with this for now
-          if(i_alpha!=length(v_alphas)){
-            after_mutation[i_patch,i_alpha+1,i_theta,p_start] <- cell_popsize*(mu/4) + after_mutation[i_patch,i_alpha+1,i_theta,p_start]
-          }
-          if(i_alpha!=1){
-            after_mutation[i_patch,i_alpha-1,i_theta,p_start] <- cell_popsize*(mu/4) + after_mutation[i_patch,i_alpha-1,i_theta,p_start]
-          }
-          # mutation to theta
-          if(i_theta!=length(v_thetas)){
-            after_mutation[i_patch,i_alpha,i_theta+1,p_start] <- cell_popsize*(mu/4) + after_mutation[i_patch,i_alpha,i_theta+1,p_start]
-          }
-          if(i_theta!=1){
-            after_mutation[i_patch,i_alpha,i_theta-1,p_start] <- cell_popsize*(mu/4) + after_mutation[i_patch,i_alpha,i_theta-1,p_start]
-          }
-          # 
+          after_mutation[i_patch,min(i_alpha+1,length(v_alphas)),i_theta,p_start] <- cell_popsize*(epsis_m[1]+mu/4) + after_mutation[i_patch,min(i_alpha+1,length(v_alphas)),i_theta,p_start]
+          after_mutation[i_patch,max(1,i_alpha-1),i_theta,p_start] <- cell_popsize*(epsis_m[2]+mu/4) + after_mutation[i_patch,max(1,i_alpha-1),i_theta,p_start]
+          after_mutation[i_patch,i_alpha,min(i_theta+1,length(v_thetas)),p_start] <- cell_popsize*(epsis_m[3]+mu/4) + after_mutation[i_patch,i_alpha,min(i_theta+1,length(v_thetas)),p_start]
+          after_mutation[i_patch,i_alpha,max(1,i_theta-1),p_start] <- cell_popsize*(epsis_m[4]+mu/4) + after_mutation[i_patch,i_alpha,max(1,i_theta-1),p_start]
+          
           # no mutation
           after_mutation[i_patch,i_alpha,i_theta,p_start] <- (1-mu)*cell_popsize + after_mutation[i_patch,i_alpha,i_theta,p_start]
           
@@ -109,5 +105,5 @@ f_RunMatrixSim2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
   by_t <- mutate(by_t, alpha=alpha/popsize, theta=theta/popsize)
   
   ########## Output ##########
-  return(by_t)
+  return(list(sim_melt,by_t))
 }

@@ -11,7 +11,7 @@ library(gridExtra)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSim.R')
-#source('functions/f_RunMatrixSim2.R')
+source('functions/f_RunMatrixSim2.R')
 source('functions/utility_functions.R')
 ```
 
@@ -41,23 +41,39 @@ mu <- 0.01 # mutation frequency
 # Matrix sim
 
 ```{r}
-b <- 2
+b <- 3
 
-matrix_out <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu=0.01,b,K=6)[[2]]
+matrix_out <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start=1,theta_start=1,p_start,mu=0.01,b,K=60)[[2]]
 
-f_PlotOutput(matrix_out,plot_t=nrow(matrix_out),kern_xlim=1)
+f_PlotOutput(matrix_out,kern_timesteps=seq(from=500,by=10,to=1000),kern_xlim=1)
 
 tail(matrix_out)
 ```
+```{r}
+b <- 3
 
+matrix_out_2 <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu=0.1,b,K=60)[[2]]
+
+f_PlotOutput(matrix_out_2,kern_timesteps=seq(from=500,by=10,to=1000),kern_xlim=1)
+
+tail(matrix_out_2)
+```
 # Run IBM once
 
 ```{r}
 b <- 2
-IBM_out <- f_RunIBM(nx,ny,nsteps=1000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu=0.1,b)
+IBM_out <- f_RunIBM(nx,ny,nsteps=4000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu=0.01,b)
 
-f_PlotOutput(IBM_out[[2]], plot_t=seq(from=700,by=10,to=1000))
+f_PlotOutput(IBM_out[[2]], kern_timesteps=seq(from=1500,by=40,to=4000))
 ```
+
+```{r}
+b <- 2
+IBM_out_2 <- f_RunIBM(nx,ny,nsteps=2000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu=0.1,b)
+
+f_PlotOutput(IBM_out_2[[2]], kern_timesteps=seq(from=1000,by=20,to=2000))
+```
+
 # Run IBM multiple times
 ```{r}
 b <- 2

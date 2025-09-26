@@ -78,3 +78,17 @@ ggplot()+
   theme_minimal()+
   theme(legend.position='top')
 
+
+############### sample ###################
+library(dplyr)
+cellpop <- 60
+dests <- 1:5
+probs <- c(0.8,0.1,0.05,0.04,0.01)
+sum(probs)
+
+a <- data.frame(patch=sample(dests,size=cellpop,probs,replace=TRUE)) %>%
+  group_by(patch) %>%
+  summarize(immigrants=n())
+
+
+# get x numbers that add up to 1 from a uniform distribution of probability 1/x

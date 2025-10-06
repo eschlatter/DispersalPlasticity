@@ -57,12 +57,12 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
     pop_by_patch <- apply(sim_array[,,,,t],1,sum)
     pop_by_patch <- pmax(K,pop_by_patch) # scale by 1 (leave it alone) if population of a patch is less than K
 
-    scale_by <- array(dim=c(npatch,length(v_alphas),length(v_thetas),length(v_p)))
+    scale_by <- array(dim=c(npatch,length(v_alphas),length(v_thetas),length(v_p),1))
     # add stochasticity to the competition process
     for(i_patch in 1:npatch){
-      scale_by[i_patch,,,] <- rnorm(n=length(v_alphas)*length(v_thetas)*length(v_p),mean=pop_by_patch[i_patch],sd=K/10)
+      scale_by[i_patch,,,,1] <- rnorm(n=length(v_alphas)*length(v_thetas)*length(v_p),mean=pop_by_patch[i_patch],sd=K/10)
     }
-    sim_array[,,,,t] <- K*sim_array[,,,,t]/scale_by
+    sim_array[,,,,t] <- K*sim_array[,,,,t,drop=F]/scale_by
     #sim_array[,,,,t] <- sweep(sim_array[,,,,t],MARGIN=1,FUN='/',STATS=pop_by_patch/K) # scale by total patch population (relative to K)
   } # t
   

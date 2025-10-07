@@ -1,4 +1,4 @@
-f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=1){
+f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=1,heatmap_plot_int=NA,sleep_int=0){
   
   ########## Data structures to describe space and dispersal ##########
   hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
@@ -56,7 +56,7 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
     # so, if the patch has population greater than K, scale the value in each box by 1/(sum of all boxes for that patch)
     pop_by_patch <- apply(sim_array[,,,,t],1,sum)
     pop_by_patch <- pmax(K,pop_by_patch) # scale by 1 (leave it alone) if population of a patch is less than K
-
+    
     scale_by <- array(dim=c(npatch,length(v_alphas),length(v_thetas),length(v_p),1))
     # add stochasticity to the competition process
     for(i_patch in 1:npatch){
@@ -64,7 +64,14 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
     }
     sim_array[,,,,t] <- K*sim_array[,,,,t,drop=F]/scale_by
     #sim_array[,,,,t] <- sweep(sim_array[,,,,t],MARGIN=1,FUN='/',STATS=pop_by_patch/K) # scale by total patch population (relative to K)
+    
+    if(t%%heatmap_plot_int==0){
+      f_PlotHeatmaps(sim_array[,,,,t],patch_locations,t)
+      Sys.sleep(sleep_int)
+    }
+    
   } # t
+  
   
   ########## Process data for plotting ##########
   

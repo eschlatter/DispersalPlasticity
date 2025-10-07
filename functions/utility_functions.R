@@ -1,12 +1,77 @@
 library(gridExtra)
 
+############## heatmap function ##################
+# inputs:
+#   sim_array_t: just the portion of sim_array from timestep t
+#   patch_locations for mapmaking
+f_PlotHeatmaps <- function(sim_array_t,patch_locations,t){
+  ### data processing
+  # melt into a dataframe with columns patch, timestep, alpha, theta, p, popsize
+  dimnames(sim_array_t) <- list(patch_locations$id,
+                                v_alphas,
+                                v_thetas,
+                                v_p)
+  sim_melt <- array2DF(sim_array_t)
+  sim_melt <- mutate_all(sim_melt, as.numeric)
+  colnames(sim_melt) <- c('patch','alpha','theta','p','popsize')
+  
+  ### make maps
+  ## map of alpha values
+  alpha_by_patch <- group_by(sim_melt,patch,alpha) %>%
+    summarize(popsize=sum(popsize),.groups='drop') %>%  # add up what's in the boxes with all values of theta
+    group_by(patch) %>%
+    summarize(alpha=sum(alpha*popsize)/sum(popsize)) %>%   # at each patch, find the mean value of alpha
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  plot_alpha <- ggplot(alpha_by_patch,aes(x=x-0.5,y=y-0.5,fill=alpha))+
+    geom_tile()+
+    scale_x_continuous(breaks=0:10)+
+    scale_y_continuous(breaks=0:10)+
+    labs(x='x',y='y')+
+    coord_fixed()
+  
+  ## map of theta values
+  theta_by_patch <- group_by(sim_melt,patch,theta) %>%
+    summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha
+    group_by(patch) %>%
+    summarize(theta=sum(theta*popsize)/sum(popsize)) %>%
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  plot_theta <- ggplot(theta_by_patch,aes(x=x-0.5,y=y-0.5,fill=theta))+
+    geom_tile()+
+    scale_x_continuous(breaks=0:10)+
+    scale_y_continuous(breaks=0:10)+
+    labs(x='x',y='y')+
+    coord_fixed()
+  
+  ## map of population size
+  pop_by_patch <- group_by(sim_melt,patch) %>%
+    summarize(popsize=sum(popsize),.groups='drop') %>%
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  plot_abund <- ggplot(pop_by_patch,aes(x=x-0.5,y=y-0.5,fill=popsize))+
+    geom_tile()+
+    scale_x_continuous(breaks=0:10)+
+    scale_y_continuous(breaks=0:10)+
+    labs(x='x',y='y')+
+    coord_fixed()
+  
+  grid.arrange(plot_alpha, plot_theta, plot_abund,ncol=1,top=paste0('t = ',t))
+}
+
 f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25){
-  p1 <- ggplot(by_t,aes(x=t))+
+  p0 <- ggplot(by_t,aes(x=t))+
     geom_line(aes(y=alpha,color='alpha'))+
     geom_line(aes(y=theta,color='theta'))+
     labs(title='kernel parameters',y='value')+
     theme_minimal()+
     theme(legend.position = 'top')
+  
+  p1 <- ggplot(by_t,aes(x=alpha,y=theta))+
+    geom_line(alpha=0.75,lwd=0.25)+
+    theme_minimal()+
+    geom_point(data=last(by_t),aes(x=alpha,y=theta),color='red')+
+    labs(title='kernel parameters')
   
   p2 <- ggplot()+
     xlim(0,kern_xlim)+
@@ -24,7 +89,7 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25){
     theme_minimal()+
     labs(title='population size')
   
-  grid.arrange(p1,p2,p3,nrow=1)
+  grid.arrange(p0,p1,p2,p3,nrow=1)
 }
 
 f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas){

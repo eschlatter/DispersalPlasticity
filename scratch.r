@@ -7,6 +7,64 @@ source('functions/f_RunMatrixSim.R')
 #source('functions/f_RunMatrixSim2.R')
 source('functions/utility_functions.R')
 
+sim_array_t <- sim_array[,,,,2]
+############## heatmap function ##################
+# inputs:
+#   sim_array_t: just the portion of sim_array from timestep t
+#   patch_locations for mapmaking
+f_PlotHeatmaps <- function(sim_array_t,patch_locations){
+  ### data processing
+  # melt into a dataframe with columns patch, timestep, alpha, theta, p, popsize
+  dimnames(sim_array_t) <- list(patch_locations$id,
+                              v_alphas,
+                              v_thetas,
+                              v_p)
+  sim_melt <- array2DF(sim_array_t)
+  sim_melt <- mutate_all(sim_melt, as.numeric)
+  colnames(sim_melt) <- c('patch','alpha','theta','p','popsize')
+  
+  ### make maps
+  ## map of alpha values
+  alpha_by_patch <- group_by(sim_melt,patch,alpha) %>%
+    summarize(popsize=sum(popsize),.groups='drop') %>%  # add up what's in the boxes with all values of theta
+    group_by(patch) %>%
+    summarize(alpha=sum(alpha*popsize)/sum(popsize)) %>%   # at each patch, find the mean value of alpha
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  plot_alpha <- ggplot(alpha_by_patch,aes(x=x-0.5,y=y-0.5,fill=alpha))+
+    geom_tile()+
+    scale_x_continuous(breaks=0:10)+
+    scale_y_continuous(breaks=0:10)+
+    labs(title='alpha',x='x',y='y')
+  
+  ## map of theta values
+  theta_by_patch <- group_by(sim_melt,patch,theta) %>%
+    summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha
+    group_by(patch) %>%
+    summarize(theta=sum(theta*popsize)/sum(popsize)) %>%
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  plot_theta <- ggplot(theta_by_patch,aes(x=x-0.5,y=y-0.5,fill=theta))+
+    geom_tile()+
+    scale_x_continuous(breaks=0:10)+
+    scale_y_continuous(breaks=0:10)+
+    labs(title='theta',x='x',y='y')
+  
+  ## map of population size
+  pop_by_patch <- group_by(sim_melt,patch) %>%
+    summarize(popsize=sum(popsize),.groups='drop') %>%
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  plot_abund <- ggplot(pop_by_patch,aes(x=x-0.5,y=y-0.5,fill=popsize))+
+    geom_tile()+
+    scale_x_continuous(breaks=0:10)+
+    scale_y_continuous(breaks=0:10)+
+    labs(title='abundance',x='x',y='y')
+  
+  grid.arrange(plot_alpha, plot_theta, plot_abund,ncol=1)
+}
+
+
 ##############  maps of alpha, theta, popsize values (from matrix data) ###############
 nx <- 10 # size of space in the x dimension
 ny <- 10 # size of space in the y dimension

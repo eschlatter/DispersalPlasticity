@@ -1,4 +1,4 @@
-f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b){
+f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,heatmap_plot_int){
   
   ########## Data structures to describe space and dispersal ##########
   hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
@@ -46,7 +46,14 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
     # cleanup for next timestep
     pop <- rbind(pop,larvae)
     
-  } # t
+    if(t_step %% 1000 == 0) print(t_step)
+    
+    if(t_step%%heatmap_plot_int==0){
+      f_PlotHeatmapsIBM(larvae,patch_locations,t_step)
+      Sys.sleep(2)
+    }
+    
+  } # t_step
   
   # add values (not just indices) of parameters to dataframe
   pop <- mutate(pop,alpha_value=v_alphas[alpha],theta_value=v_thetas[theta])

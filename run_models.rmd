@@ -8,6 +8,7 @@ date: "2025-09-19"
 library(tidyverse)
 library(scales)
 library(gridExtra)
+library(reshape2)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSim.R')
@@ -38,19 +39,14 @@ mu <- 0.01 # mutation frequency
 ```
 
 
-# Do a bunch of matrix sims and plot all the traces on the same graph
 
+# Multiple runs at a time
+## Matrix
 ```{r}
 nx <- 5 # size of space in the x dimension
 ny <- 5 # size of space in the y dimension
 
-nsteps <- 100 # timesteps
-
-# dispersal kernel is a gamma distribution, shape=alpha, scale=theta
-v_alphas <- seq(from=0.01,to=0.61,by=0.2) # values the shape parameter can take
-v_thetas <- seq(from=0.01,to=0.61,by=0.2) # values the scale parameter can take
-alpha_start <- 1 # index (in v_alphas) of shape parameter initial value
-theta_start <- 1 # index in (v_thetas) of scale parameter initial value
+nsteps <- 1000 # timesteps
 
 # plasticity parameter currently doesn't affect anything or evolve
 v_p <- seq(from=0,to=0.9,length.out=2) # values the plasticity parameter can take
@@ -61,53 +57,217 @@ mu <- 0.01 # mutation frequency
 b=3
 K=60
 
-sims <- data.frame(alpha_start=NA,alpha_from=NA,alpha_to=NA,alpha_nout=NA,theta_start=NA,theta_from=NA,theta_to=NA,theta_nout=NA)
-sims[1,] <- data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=5)
-sims[2,] <- data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=1,theta_from=0.1, theta_to=0.1,theta_nout=1)
+sims <- data.frame()
+# original param set
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=5))
+# different starting spots
+sims <- rbind(sims,data.frame(alpha_start=5,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=5))
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=5,theta_from=0.1, theta_to=5,theta_nout=5))
+sims <- rbind(sims,data.frame(alpha_start=5,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=5,theta_from=0.1, theta_to=5,theta_nout=5))
+# keep theta constant
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=1,theta_from=0.1, theta_to=0.1,theta_nout=2))
+# keep alpha constant
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=0.1,alpha_nout=2,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=5))
+colnames(sims)=c('alpha_start','alpha_from','alpha_to','alpha_nout','theta_start','theta_from','theta_to','theta_nout')
 sims$sim_num <- 1:nrow(sims)
 
+
+df_out <- data.frame(t=NA,alpha=NA,theta=NA,popsize=NA,sim_num=NA)
 for(i in 1:nrow(sims)){
   v_alphas <- seq(from=sims$alpha_from[i],to=sims$alpha_to[i],length.out=sims$alpha_nout[i])
   v_thetas <- seq(from=sims$theta_from[i],to=sims$theta_to[i],length.out=sims$theta_nout[i])
   
-  matrix_out <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,sims$alpha_start[i],sims$theta_start[i],p_start,mu,b,K,heatmap_plot_int=nsteps)
+  matrix_out <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,sims$alpha_start[i],sims$theta_start[i],p_start,mu,b,K,heatmap_plot_int=nsteps)[[2]] %>%
+    mutate(sim_num=sims$sim_num[i])
+  
+  df_out <- rbind(df_out,matrix_out)
 }
+
+df_out <- filter(df_out,!is.na(sim_num)) %>%
+  arrange(t) %>%
+  mutate(sim_num=as.factor(sim_num))
+lasts <- group_by(df_out,sim_num)%>%
+  summarize(alpha=last(alpha),theta=last(theta))
+ggplot(df_out,aes(x=alpha,y=theta,color=sim_num))+
+    geom_path(lwd=0.25)+
+  geom_point(data=lasts,aes(x=alpha,y=theta,color=sim_num))+
+    theme_minimal()
+
+f_PlotOutput(filter(df_out,sim_num==1),kern_timesteps=800:1000,kern_xlim=5)
+```
+## IBM
+```{r}
+incrs <- 20 # specify number of increments in v_alpha and v_theta
+nx <- 5 # size of space in the x dimension
+ny <- 5 # size of space in the y dimension
+
+nsteps <- 50 # timesteps
+
+# plasticity parameter currently doesn't affect anything or evolve
+v_p <- seq(from=0,to=0.9,length.out=2) # values the plasticity parameter can take
+p_start <- 1 # index (in v_p) of plasticity parameter initial value
+mu <- 0.01 # mutation frequency
+# mutation increment specified by v_alphas, v_thetas
+b=3
+K=60
+
+sims <- data.frame()
+# original param set
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=incrs,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=incrs))
+# different starting spots
+sims <- rbind(sims,data.frame(alpha_start=incrs,alpha_from=0.1,alpha_to=5,alpha_nout=incrs,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=incrs))
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=incrs,theta_start=incrs,theta_from=0.1, theta_to=5,theta_nout=incrs))
+sims <- rbind(sims,data.frame(alpha_start=incrs,alpha_from=0.1,alpha_to=5,alpha_nout=incrs,theta_start=incrs,theta_from=0.1, theta_to=5,theta_nout=incrs))
+# keep theta constant
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=incrs,theta_start=1,theta_from=0.1, theta_to=0.1,theta_nout=2))
+# keep alpha constant
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=0.1,alpha_nout=2,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=incrs))
+colnames(sims)=c('alpha_start','alpha_from','alpha_to','alpha_nout','theta_start','theta_from','theta_to','theta_nout')
+sims$sim_num <- 1:nrow(sims)
+
+
+df_out <- data.frame(t=NA,alpha=NA,theta=NA,popsize=NA,sim_num=NA)
+for(i in 1:nrow(sims)){
+  v_alphas <- seq(from=sims$alpha_from[i],to=sims$alpha_to[i],length.out=sims$alpha_nout[i])
+  v_thetas <- seq(from=sims$theta_from[i],to=sims$theta_to[i],length.out=sims$theta_nout[i])
+  
+  matrix_out <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,sims$alpha_start[i],sims$theta_start[i],p_start,mu,b)[[2]] %>%
+    mutate(sim_num=sims$sim_num[i])
+  
+  df_out <- rbind(df_out,matrix_out)
+}
+
+df_out <- filter(df_out,!is.na(sim_num)) %>%
+  arrange(t) %>%
+  mutate(sim_num=as.factor(sim_num)) %>%
+  mutate(MEAN=alpha*theta,VAR=alpha*(theta^2))
+
+df_out <- filter(df_out,sim_num!=5)
+
+firsts <- group_by(df_out,sim_num)%>%
+  summarize(alpha=first(alpha),theta=first(theta),MEAN=first(MEAN),VAR=first(VAR))
+
+lasts <- group_by(df_out,sim_num)%>%
+  summarize(alpha=last(alpha),theta=last(theta),MEAN=last(MEAN),VAR=last(VAR))
+
+ggplot(df_out,aes(x=alpha,y=theta,color=sim_num))+
+    geom_path(alpha=0.75,lwd=0.25)+
+  geom_point(data=lasts,aes(x=alpha,y=theta,fill=sim_num),color='black',pch=21, size=3)+
+  geom_point(data=firsts,aes(x=alpha,y=theta,color=sim_num),fill='white',pch=21, size=3)+
+      theme_minimal()
+
+sims_last <- first(sims)
+v_a <- seq(from=sims_last$alpha_from,to=sims_last$alpha_to,length.out=sims_last$alpha_nout)
+v_t <- seq(from=sims_last$theta_from,to=sims_last$theta_to,length.out=sims_last$theta_nout)
+
+all_kerns <- expand.grid(v_a,v_t) %>%
+  rename(alpha=Var1,theta=Var2) %>%
+  mutate(MEAN=alpha*theta,VAR=alpha*theta^2)
+
+ggplot(df_out,aes(x=MEAN,y=VAR,color=sim_num))+
+  geom_point(data=all_kerns,aes(x=MEAN,y=VAR),color='gray',alpha=0.2)+
+  geom_path(data=df_out,alpha=0.75,lwd=0.25)+
+  geom_point(data=lasts,aes(x=MEAN,y=VAR,fill=sim_num),color='black',pch=21, size=3)+
+    theme_minimal()
+
+#save(sims,df_out,file='model_runs/v20_xy5_t50000_init_all.RData')
+```
+## IBM, but just run the same initial params a bunch of times
+```{r}
+#load('model_runs/v25_xy5_t25000.RData')
+incrs <- 20 # specify number of increments in v_alpha and v_theta
+nx <- 5 # size of space in the x dimension
+ny <- 5 # size of space in the y dimension
+
+nsteps <- 500 # timesteps
+
+# plasticity parameter currently doesn't affect anything or evolve
+v_p <- seq(from=0,to=0.9,length.out=2) # values the plasticity parameter can take
+p_start <- 1 # index (in v_p) of plasticity parameter initial value
+
+mu <- 0.01 # mutation frequency
+# mutation increment specified by v_alphas, v_thetas
+b=3
+K=60
+
+sims <- data.frame()
+# original param set
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=incrs,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=incrs))
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=incrs,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=incrs))
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=incrs,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=incrs))
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=incrs,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=incrs))
+sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=incrs,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=incrs))
+
+colnames(sims)=c('alpha_start','alpha_from','alpha_to','alpha_nout','theta_start','theta_from','theta_to','theta_nout')
+sims$sim_num <- 1:nrow(sims)
+
+
+df_out <- data.frame(t=NA,alpha=NA,theta=NA,popsize=NA,sim_num=NA)
+for(i in 1:nrow(sims)){
+  v_alphas <- seq(from=sims$alpha_from[i],to=sims$alpha_to[i],length.out=sims$alpha_nout[i])
+  v_thetas <- seq(from=sims$theta_from[i],to=sims$theta_to[i],length.out=sims$theta_nout[i])
+  
+  matrix_out <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,sims$alpha_start[i],sims$theta_start[i],p_start,mu,b)[[2]] %>%
+    mutate(sim_num=sims$sim_num[i])
+  
+  df_out <- rbind(df_out,matrix_out)
+}
+
+df_out <- filter(df_out,!is.na(sim_num)) %>%
+  arrange(t) %>%
+  mutate(sim_num=as.factor(sim_num)) %>%
+  mutate(MEAN=alpha*theta,VAR=alpha*(theta^2))
+
+lasts <- group_by(df_out,sim_num)%>%
+  summarize(alpha=last(alpha),theta=last(theta),MEAN=last(MEAN),VAR=last(VAR))
+
+ggplot(df_out,aes(x=alpha,y=theta,color=sim_num))+
+    geom_path(alpha=0.75,lwd=0.25)+
+  geom_point(data=lasts,aes(x=alpha,y=theta,fill=sim_num),color='black',pch=21, size=3)+
+    theme_minimal()
+
+sims <- last(sims)
+v_a <- seq(from=sims$alpha_from,to=sims$alpha_to,length.out=sims$alpha_nout)
+v_t <- seq(from=sims$theta_from,to=sims$theta_to,length.out=sims$theta_nout)
+
+all_kerns <- expand.grid(v_a,v_t) %>%
+  rename(alpha=Var1,theta=Var2) %>%
+  mutate(MEAN=alpha*theta,VAR=alpha*theta^2)
+
+ggplot(df_out,aes(x=MEAN,y=VAR,color=sim_num))+
+  geom_point(data=all_kerns,aes(x=MEAN,y=VAR),color='gray',alpha=0.2)+
+  geom_path(data=df_out,alpha=0.75,lwd=0.25)+
+  geom_point(data=lasts,aes(x=MEAN,y=VAR,fill=sim_num),color='black',pch=21, size=3)+
+    theme_minimal()
+
+#save(sims,df_out,file='model_runs/v25_xy5_t25000.RData')
 ```
 
-
-# Matrix sim
+# One run at a time
+## Matrix sim
 
 ```{r}
 b <- 3
-v_alphas <- seq(from=0.1,to=5,length.out=5)
-v_thetas <- seq(from=0.1,to=5,length.out=5)
+# v_alphas <- seq(from=0.01,to=0.61,length.out=5) # values the shape parameter can take
+# v_thetas <- seq(from=0.01,to=0.61,length.out=5) # values the scale parameter can take
 
-matrix_out <- f_RunMatrixSim(nx=5,ny=5,nsteps=5000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu=0.01,b,K=60,heatmap_plot_int=5000)[[2]]
+v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
+v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
 
-f_PlotOutput(matrix_out,kern_timesteps=seq(from=4000,by=50,to=5000),kern_xlim=1)
+matrix_out <- f_RunMatrixSim(nx,ny,nsteps=5000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=60,heatmap_plot_int=500)[[2]]
 
-tail(matrix_out)
-summarize(matrix_out[4000:5000,],med_alpha=median(alpha),med_theta=median(theta),med_popsize=median(popsize))
+f_PlotOutput(matrix_out,kern_timesteps=seq(from=1000,by=50,to=2000),kern_xlim=1)
+summarize(matrix_out[1000:2000,],med_alpha=median(alpha),med_theta=median(theta),med_popsize=median(popsize))
 ```
 
+## Run IBM once
 
 ```{r}
-b <- 3
+b <- 4
+v_alphas=seq(from=0.1,to=5,length.out=5)
+v_thetas=seq(from=0.1,to=5,length.out=5)
 
-matrix_out_2 <- f_RunMatrixSim(nx=10,ny=10,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu=0.1,b,K=60)[[2]]
-
-f_PlotOutput(matrix_out_2,kern_timesteps=seq(from=400,by=10,to=500),kern_xlim=1)
-
-tail(matrix_out_2)
-```
-# Run IBM once
-
-```{r}
-b <- 2
-v_alphas=seq(from=0.1,to=6,length.out=5)
-v_thetas=seq(from=0.1,to=10,length.out=5)
-
-IBM_out <- f_RunIBM(nx,ny,nsteps=4000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu=0.01,b)[[2]]
+IBM_out <- f_RunIBM(nx,ny,nsteps=5000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu=0.01,b,heatmap_plot_int = 500)[[2]]
 
 f_PlotOutput(IBM_out, kern_timesteps=seq(from=2000,by=40,to=4000),kern_xlim = 50)
 summarize(IBM_out[1000:4000,],med_alpha=median(alpha),med_theta=median(theta),med_popsize=median(popsize))
@@ -120,7 +280,7 @@ IBM_out_2 <- f_RunIBM(nx,ny,nsteps=2000,v_alphas,v_thetas,v_p,alpha_start,theta_
 f_PlotOutput(IBM_out_2[[2]], kern_timesteps=seq(from=1000,by=20,to=2000))
 ```
 
-# Run IBM multiple times
+# Run IBM multiple times, look at kernel uncertainty
 ```{r}
 b <- 2
 

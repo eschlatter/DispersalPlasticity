@@ -1,5 +1,40 @@
 library(gridExtra)
 
+############## heatmap function for IBM ###############
+# inputs:
+#   pop_t: population dataframe for the current timestep
+#   patch_locations for mapmaking
+#   t current timestep
+f_PlotHeatmapsIBM <- function(pop_t,patch_locations,t){
+  by_patch <- pop_t %>%
+    group_by(dest_site) %>%
+    summarize(alpha=mean(alpha),theta=mean(theta),popsize=n()) %>%
+    left_join(patch_locations,by=c("dest_site"="id"))
+  
+  plot_alpha <- ggplot(by_patch,aes(x=x-0.5,y=y-0.5,fill=alpha))+
+    geom_tile()+
+    scale_x_continuous(breaks=0:10)+
+    scale_y_continuous(breaks=0:10)+
+    labs(x='x',y='y')+
+    coord_fixed()
+  
+  plot_theta <- ggplot(by_patch,aes(x=x-0.5,y=y-0.5,fill=theta))+
+    geom_tile()+
+    scale_x_continuous(breaks=0:10)+
+    scale_y_continuous(breaks=0:10)+
+    labs(x='x',y='y')+
+    coord_fixed()
+  
+  plot_abund <- ggplot(by_patch,aes(x=x-0.5,y=y-0.5,fill=popsize))+
+    geom_tile()+
+    scale_x_continuous(breaks=0:10)+
+    scale_y_continuous(breaks=0:10)+
+    labs(x='x',y='y')+
+    coord_fixed()
+  
+  grid.arrange(plot_alpha, plot_theta, plot_abund,ncol=1,top=paste0('t = ',t))
+}
+
 ############## heatmap function ##################
 # inputs:
 #   sim_array_t: just the portion of sim_array from timestep t
@@ -120,7 +155,7 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas){
   # a matrix of the size of the pie wedge between each patch (i.e., theta in polar coords -- not theta of the dispersal kernel)
   # assuming the width of the cell at the given distance is 1: not quite correct most of the time, but probably close enough
   # (dimensions npatch x npatch)
-  patch_angles <- 2*asin(1/(2*patch_dists))/(2*pi)
+  patch_angles <- suppressWarnings(2*asin(1/(2*patch_dists))/(2*pi))
   patch_angles[is.nan(patch_angles)] <- 1
   
   #check: proportion of individuals from each patch that land in a patch (same configuration as patch_map).

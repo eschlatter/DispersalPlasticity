@@ -70,6 +70,8 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
       Sys.sleep(sleep_int)
     }
     
+    if(t %% 1000 == 0) print(t_step)
+    
   } # t
   
   

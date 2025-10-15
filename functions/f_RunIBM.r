@@ -1,5 +1,5 @@
 f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,heatmap_plot_int){
-  
+  starttime <- proc.time()
   ########## Data structures to describe space and dispersal ##########
   hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
   patch_locations <- hab$patch_locations
@@ -48,10 +48,10 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
     
     if(t_step %% 1000 == 0) print(t_step)
     
-    if(t_step%%heatmap_plot_int==0){
-      f_PlotHeatmapsIBM(larvae,patch_locations,t_step)
-      Sys.sleep(2)
-    }
+    # if(t_step%%heatmap_plot_int==0){
+    #   f_PlotHeatmapsIBM(larvae,patch_locations,t_step)
+    #   Sys.sleep(2)
+    # }
     
   } # t_step
   
@@ -62,5 +62,6 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
   by_t <- summarize(group_by(pop,t),alpha=mean(alpha_value),theta=mean(theta_value),popsize=n())
   
   ########## Output ##########
-  return(list(pop,by_t))
+  time_run <- proc.time()-starttime
+  return(list(pop,by_t, patch_locations, time_run))
 }

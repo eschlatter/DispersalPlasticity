@@ -1,6 +1,50 @@
 library(gridExtra)
 
-############## heatmap function for IBM ###############
+############## after-the-fact heatmap function for IBM ###############
+# inputs:
+#   pop: population dataframe for the current timestep
+#   patch_locations for mapmaking
+#   plot_int to specify time intervals to plot
+f_PlotAllHeatmapsIBM <- function(pop,patch_locations,plot_int=NA){
+  if(is.na(plot_int)) plot_int <- round(max(pop$t)/10) # set the plotting interval, unless specified
+  plot_ints <- seq(from=plot_int,to=max(pop$t),by=plot_int)
+  
+  by_patch <- pop %>%
+    filter(t %in% plot_ints) %>%
+    group_by(dest_site,t) %>%
+    # variance of alpha and theta doesn't work at the moment, b/c just one individual per patch
+    summarize(alpha_m=mean(alpha_value),alpha_v=var(alpha_value),theta_m=mean(theta_value),theta_v=var(theta_value),popsize=n()) %>%
+    left_join(patch_locations,by=c("dest_site"="id"))
+  
+  for(t_i in plot_ints){
+    by_patch_i <- filter(by_patch,t==t_i)
+    
+    plot_alpha <- ggplot(by_patch_i,aes(x=x-0.5,y=y-0.5,fill=alpha_m))+
+      geom_tile()+
+      scale_x_continuous(breaks=0:10)+
+      scale_y_continuous(breaks=0:10)+
+      labs(x='x',y='y')+
+      coord_fixed()
+    
+    plot_theta <- ggplot(by_patch_i,aes(x=x-0.5,y=y-0.5,fill=theta_m))+
+      geom_tile()+
+      scale_x_continuous(breaks=0:10)+
+      scale_y_continuous(breaks=0:10)+
+      labs(x='x',y='y')+
+      coord_fixed()
+    
+    plot_abund <- ggplot(by_patch_i,aes(x=x-0.5,y=y-0.5,fill=popsize))+
+      geom_tile()+
+      scale_x_continuous(breaks=0:10)+
+      scale_y_continuous(breaks=0:10)+
+      labs(x='x',y='y')+
+      coord_fixed()
+    
+    grid.arrange(plot_alpha, plot_theta, plot_abund,ncol=1,top=paste0('t = ',t_i))
+  }  
+}
+
+############## dynamic heatmap function for IBM ###############
 # inputs:
 #   pop_t: population dataframe for the current timestep
 #   patch_locations for mapmaking
@@ -8,7 +52,7 @@ library(gridExtra)
 f_PlotHeatmapsIBM <- function(pop_t,patch_locations,t){
   by_patch <- pop_t %>%
     group_by(dest_site) %>%
-    summarize(alpha=mean(alpha),theta=mean(theta),popsize=n()) %>%
+    summarize(alpha=mean(alpha_value),theta=mean(theta_value),popsize=n()) %>%
     left_join(patch_locations,by=c("dest_site"="id"))
   
   plot_alpha <- ggplot(by_patch,aes(x=x-0.5,y=y-0.5,fill=alpha))+
@@ -35,7 +79,136 @@ f_PlotHeatmapsIBM <- function(pop_t,patch_locations,t){
   grid.arrange(plot_alpha, plot_theta, plot_abund,ncol=1,top=paste0('t = ',t))
 }
 
-############## heatmap function ##################
+############## after-the-fact heatmap function for matrix model ##################
+# inputs:
+#   sim_melt: matrix output melted to df
+#   patch_locations for mapmaking
+#   plot_int: optionally, specify timestep intervals for plots
+f_PlotBubbleMatrix <- function(sim_melt,patch_locations,plot_int=NA){
+  if(is.na(plot_int)) plot_int <- round(max(sim_melt$t)/10) # set the plotting interval, unless specified
+  plot_ints <- seq(from=plot_int,to=max(sim_melt$t),by=plot_int)
+  
+  ## alpha
+  # create the coordinates for each bubble
+  n_alphas <- length(unique(sim_melt$alpha))
+  box_nrow <- round(sqrt(n_alphas))
+  box_ncol <- ceiling(n_alphas/box_nrow)
+  box_x <- seq(from=1/(2*box_ncol),to=1,by=1/box_ncol)
+  box_y <- seq(from=1/(2*box_nrow),to=1,by=1/box_nrow)
+  box_spots <- expand_grid(x_add=box_x,y_add=box_y)[1:n_alphas,] %>%
+    mutate(alpha=round(v_alphas,digits=10))
+  # process data
+  alpha_df_plot <- group_by(sim_melt,patch,alpha,t) %>%
+    mutate(alpha=round(alpha,digits=10)) %>%
+    summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of theta
+    left_join(box_spots,by='alpha') %>%
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  ## theta
+  # create the coordinates for each bubble
+  n_thetas <- length(unique(sim_melt$theta))
+  box_nrow <- round(sqrt(n_thetas))
+  box_ncol <- ceiling(n_thetas/box_nrow)
+  box_x <- seq(from=1/(2*box_ncol),to=1,by=1/box_ncol)
+  box_y <- seq(from=1/(2*box_nrow),to=1,by=1/box_nrow)
+  box_spots <- expand_grid(x_add=box_x,y_add=box_y)[1:n_thetas,] %>%
+    mutate(theta=round(v_thetas,digits=10)) # need to round so the numbers match up when we join with theta_df_plot
+  # process data
+  theta_df_plot <- group_by(sim_melt,patch,theta,t) %>%
+    mutate(theta=round(theta,digits=10)) %>% # need to round so the numbers match up when we join with box_spots
+    summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha
+    left_join(box_spots,by='theta') %>%
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  for(t_i in plot_ints){
+    plot_alpha <- ggplot(filter(alpha_df_plot,t==t_i),aes(x=x+x_add-1,y=y+y_add-1)) +
+      geom_point(aes(color=alpha,size=popsize),pch=19) + 
+      geom_hline(yintercept=seq(from=0,to=ny,by=max(round(ny/10),1)))+
+      geom_vline(xintercept=seq(from=0,to=nx,by=max(round(nx/10),1)))+
+      labs(x='x',y='y')+
+      coord_fixed()
+    
+    ggplot(filter(alpha_df_plot,t==t_i,alpha==v_alphas[1]),aes(x=x+x_add-1,y=y+y_add-1)) +
+      geom_tile(aes(fill=popsize)) + 
+      labs(x='x',y='y')+
+      coord_fixed()
+    
+    plot_theta <- ggplot(filter(theta_df_plot,t==t_i),aes(x=x+x_add-1,y=y+y_add-1)) +
+      geom_point(aes(color=theta,size=popsize),pch=19) + 
+      geom_hline(yintercept=seq(from=0,to=ny,by=max(round(ny/10),1)))+
+      geom_vline(xintercept=seq(from=0,to=nx,by=max(round(nx/10),1)))+
+      labs(x='x',y='y')+
+      coord_fixed()
+    grid.arrange(plot_alpha, plot_theta,ncol=1,top=paste0('t = ',t_i))
+  }
+}
+
+############## after-the-fact heatmap function for matrix model ##################
+# inputs:
+#   sim_array_t: just the portion of sim_array from timestep t
+#   patch_locations for mapmaking
+f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA){
+  if(is.na(plot_int)) plot_int <- round(max(sim_melt$t)/10) # set the plotting interval, unless specified
+  plot_ints <- seq(from=plot_int,to=max(sim_melt$t),by=plot_int)
+  
+  # process data
+  alpha_by_patch <- group_by(sim_melt,patch,alpha,t) %>%
+    summarize(popsize=sum(popsize),.groups='drop') %>%  # add up what's in the boxes with all values of theta
+    group_by(patch,t) %>%
+    summarize(alpha_m=sum(alpha*popsize)/sum(popsize), # at each patch, find the mean and variance of alpha values
+              alpha_v=sum(popsize*(alpha-alpha_m)^2)/sum(popsize),
+              .groups='drop') %>%   
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  theta_by_patch <- group_by(sim_melt,patch,theta,t) %>%
+    summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha
+    group_by(patch,t) %>%
+    summarize(theta_m=sum(theta*popsize)/sum(popsize),
+              theta_v=sum(popsize*(theta-theta_m)^2)/sum(popsize),,
+              .groups='drop') %>%
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  pop_by_patch <- group_by(sim_melt,patch,t) %>%
+    summarize(popsize=sum(popsize),.groups='drop') %>%
+    left_join(patch_locations,by=c("patch" = "id"))
+  
+  ## make plots
+  for(t_i in plot_ints){
+    plot_alpha <- filter(alpha_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_m))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed() 
+    
+    plot_alpha_v <- filter(alpha_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_v))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed() 
+    
+    plot_theta <- filter(theta_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_m))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()
+    
+    plot_theta_v <- filter(theta_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_v))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()
+    
+    plot_abund <- filter(pop_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=popsize))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()
+    
+    grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
+  }
+}
+
+############## dynamic heatmap function for matrix model ##################
 # inputs:
 #   sim_array_t: just the portion of sim_array from timestep t
 #   patch_locations for mapmaking
@@ -103,7 +276,7 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25){
     theme(legend.position = 'top')
   
   p1 <- ggplot(by_t,aes(x=alpha,y=theta))+
-    geom_line(alpha=0.75,lwd=0.25)+
+    geom_path(alpha=0.75,lwd=0.25)+
     theme_minimal()+
     geom_point(data=last(by_t),aes(x=alpha,y=theta),color='red')+
     labs(title='kernel parameters')
@@ -186,15 +359,8 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas){
 
 # inputs: kernel, seascape
 # output: rates of dispersal from each patch to each other patch
-  # matrix Connectivity: dimensions npatch x npatch
-  # Connectivity[i,j] = the proportion of dispersers from patch j that land in patch i
+# matrix Connectivity: dimensions npatch x npatch
+# Connectivity[i,j] = the proportion of dispersers from patch j that land in patch i
 f_GetConnectivityMatrix <- function(alpha, theta, patch_dists, patch_angles){
   connectivity_matrix <- (pgamma(patch_dists+0.5,shape=alpha,scale=theta)-pgamma(patch_dists-0.5,shape=alpha,scale=theta))*patch_angles
-}
-
-# sample simple kernel function (though I think we'll just use the built-in gamma function eventually)
-f_kernel <- function(distance){
-  if(distance<=3) probability = 1/3
-  else probability = 0
-  probability
 }

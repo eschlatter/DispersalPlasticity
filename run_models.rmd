@@ -247,30 +247,56 @@ ggplot(df_out,aes(x=MEAN,y=VAR,color=sim_num))+
 ## Matrix sim
 
 ```{r}
-b <- 3
-# v_alphas <- seq(from=0.01,to=0.61,length.out=5) # values the shape parameter can take
-# v_thetas <- seq(from=0.01,to=0.61,length.out=5) # values the scale parameter can take
+b <- 4
+K <- 1
+
+nx=7
+ny=7
 
 v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
 v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
+alpha_start=2
+theta_start=2
 
-matrix_out <- f_RunMatrixSim(nx,ny,nsteps=5000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=60,heatmap_plot_int=500)[[2]]
+# plasticity parameter currently doesn't affect anything or evolve
+v_p <- seq(from=0,to=0.9,length.out=2) # values the plasticity parameter can take
+p_start <- 1 # index (in v_p) of plasticity parameter initial value
 
-f_PlotOutput(matrix_out,kern_timesteps=seq(from=1000,by=50,to=2000),kern_xlim=1)
-summarize(matrix_out[1000:2000,],med_alpha=median(alpha),med_theta=median(theta),med_popsize=median(popsize))
+mu <- 0.01 # mutation frequency
+# mutation increment specified by v_alphas, v_thetas
 ```
 
+
+```{r}
+matrix_out_sample <- f_RunMatrixSim(nx,ny,nsteps=2000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,
+                                    heatmap_plot_int=5000,competition_method = 'sample')
+
+matrix_out_sample[[4]]
+f_PlotAllHeatmaps(matrix_out_sample[[1]],matrix_out_sample[[3]])
+#f_PlotBubbleMatrix(matrix_out_sample[[1]],matrix_out_sample[[3]])
+f_PlotOutput(matrix_out_sample[[2]],kern_timesteps=seq(from=1500,by=50,to=2000),kern_xlim=25)
+summarize(matrix_out_sample[[2]][1000:2000,],med_alpha=median(alpha),med_theta=median(theta),med_popsize=median(popsize))
+```
+
+```{r}
+matrix_out_rnorm <- f_RunMatrixSim(nx,ny,nsteps=2000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,
+                                   heatmap_plot_int=5000,competition_method = 'rnorm')
+
+matrix_out_rnorm[[4]]
+f_PlotAllHeatmaps(matrix_out_rnorm[[1]],matrix_out_rnorm[[3]])
+#f_PlotBubbleMatrix(matrix_out_rnorm[[1]],matrix_out_rnorm[[3]])
+f_PlotOutput(matrix_out_rnorm[[2]],kern_timesteps=seq(from=1500,by=50,to=2000),kern_xlim=25)
+summarize(matrix_out_rnorm[[2]][1000:2000,],med_alpha=median(alpha),med_theta=median(theta),med_popsize=median(popsize))
+```
 ## Run IBM once
 
 ```{r}
-b <- 4
-v_alphas=seq(from=0.1,to=5,length.out=5)
-v_thetas=seq(from=0.1,to=5,length.out=5)
+IBM_out <- f_RunIBM(nx,ny,nsteps=1000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,heatmap_plot_int = 500)
 
-IBM_out <- f_RunIBM(nx,ny,nsteps=5000,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu=0.01,b,heatmap_plot_int = 500)[[2]]
-
-f_PlotOutput(IBM_out, kern_timesteps=seq(from=2000,by=40,to=4000),kern_xlim = 50)
-summarize(IBM_out[1000:4000,],med_alpha=median(alpha),med_theta=median(theta),med_popsize=median(popsize))
+IBM_out[[4]]
+f_PlotAllHeatmapsIBM(IBM_out[[1]],IBM_out[[3]])
+f_PlotOutput(IBM_out[[2]], kern_timesteps=seq(from=500,by=50,to=1000),kern_xlim = 25)
+summarize(IBM_out[[2]][500:1000,],med_alpha=median(alpha),med_theta=median(theta),med_popsize=median(popsize))
 ```
 
 ```{r}

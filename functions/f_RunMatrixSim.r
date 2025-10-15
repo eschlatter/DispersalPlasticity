@@ -1,4 +1,6 @@
-f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=1,heatmap_plot_int=NA,sleep_int=0){
+f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=1,heatmap_plot_int=NA,sleep_int=0, competition_method='sample'){
+  starttime <- proc.time()
+  if(!(competition_method %in% c('sample','rnorm'))) stop("competition method incorrectly specified")
   
   ########## Data structures to describe space and dispersal ##########
   hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
@@ -51,26 +53,42 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
       } # i_theta
     } # i_alpha
     
-    # competition
-    # want to cap the population of each patch at K.
-    # so, if the patch has population greater than K, scale the value in each box by 1/(sum of all boxes for that patch)
-    pop_by_patch <- apply(sim_array[,,,,t],1,sum)
-    pop_by_patch <- pmax(K,pop_by_patch) # scale by 1 (leave it alone) if population of a patch is less than K
-    
-    scale_by <- array(dim=c(npatch,length(v_alphas),length(v_thetas),length(v_p),1))
-    # add stochasticity to the competition process
-    for(i_patch in 1:npatch){
-      scale_by[i_patch,,,,1] <- rnorm(n=length(v_alphas)*length(v_thetas)*length(v_p),mean=pop_by_patch[i_patch],sd=K/10)
+    ## Competition
+    # Method 1: if a patch has population greater than K, sample K individuals and distribute them among cells in that patch
+    # (with probability according to the current abundance of each cell)
+    if(competition_method=='sample'){
+      pop_by_patch <- apply(sim_array[,,,,t],1,sum)
+      for(i_patch in 1:npatch){
+        if(pop_by_patch[i_patch]>K){
+          survivors <- sample(x=length(v_alphas)*length(v_thetas)*length(v_p),size = K ,prob = sim_array[i_patch,,,,t],replace=TRUE)
+          survivors <- as.data.frame(table(survivors)) %>% mutate(cell=as.numeric(as.character(survivors)))
+          
+          new <- array(0, dim=dim(sim_array[i_patch,,,,t,drop=F]))
+          new[survivors$cell] <- survivors$Freq
+          sim_array[i_patch,,,,t] <- new
+        }
+      }
     }
-    sim_array[,,,,t] <- K*sim_array[,,,,t,drop=F]/scale_by
-    #sim_array[,,,,t] <- sweep(sim_array[,,,,t],MARGIN=1,FUN='/',STATS=pop_by_patch/K) # scale by total patch population (relative to K)
+    # Method 2: if a patch has population greater than K, scale the value in each cell by rnorm(mean = K/(sum of all boxes for that patch))
+    if(competition_method=='rnorm'){
+      pop_by_patch <- apply(sim_array[,,,,t],1,sum)
+      scale_by_patch <- ifelse(pop_by_patch>K,pop_by_patch/K,1) # what to divide the patch population by, to reduce it to carrying capacity
+      # store the values to scale each cell by
+      scale_by <- array(dim=c(npatch,length(v_alphas),length(v_thetas),length(v_p),1))
+      for(i_patch in 1:npatch){
+        scale_by[i_patch,,,,1] <- max(rnorm(n=length(v_alphas)*length(v_thetas)*length(v_p),mean=scale_by_patch[i_patch],sd=b/10),0)
+      }
+      # do the scaling
+      sim_array[,,,,t] <- sim_array[,,,,t,drop=F]/scale_by
+    }
     
+    
+    ## output
     if(t%%heatmap_plot_int==0){
       f_PlotHeatmaps(sim_array[,,,,t],patch_locations,t)
       Sys.sleep(sleep_int)
     }
-    
-    if(t %% 1000 == 0) print(t_step)
+    if(t %% round(nsteps/10) == 0) print(t)
     
   } # t
   
@@ -100,6 +118,7 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
   # then divide by total popsize (denominator of the mean)
   by_t <- mutate(by_t, alpha=alpha/popsize, theta=theta/popsize)
   
+  time_run <- proc.time()-starttime
   ########## Output ##########
-  return(list(sim_melt,by_t))
+  return(list(sim_melt,by_t,patch_locations, time_run))
 }

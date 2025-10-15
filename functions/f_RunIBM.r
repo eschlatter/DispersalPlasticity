@@ -1,4 +1,4 @@
-f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,heatmap_plot_int){
+f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,heatmap_plot_int){
   starttime <- proc.time()
   ########## Data structures to describe space and dispersal ##########
   hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
@@ -11,11 +11,14 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
   rm(hab)
   
   ########## Data structure to describe population ##########
+  start_sites=rep(patch_locations$id,K)
+  # start_sites=rep(patch_locations$id[round(2*npatch/5),round(3*npatch/5)],K)
+  # start_sites=rep(patch_locations$id[1:5],K)
   pop <- data.frame(t=1,
                     origin_site=NA, 
                     alpha=alpha_start, # note that these are the INDICES of the parameters in v_alphas and v_thetas, not the actual parameter values
                     theta=theta_start, 
-                    dest_site=patch_locations$id)
+                    dest_site=start_sites) # start at carrying capacity everywhere
   
   ########## Simulation ##########
   for(t_step in 1:nsteps){
@@ -40,13 +43,15 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
     larvae$theta <- oob_squish(larvae$theta + theta_adds, c(1,length(v_thetas)))
     
     # competition
-    larvae <- larvae[sample(nrow(larvae),nrow(larvae),replace=FALSE),]
-    larvae <- distinct(larvae,dest_site,.keep_all=TRUE)
-    
+    # keep only K larvae (at random) at each destination site
+    # (if there are fewer than K larvae at a site, they'll all be kept)
+    larvae <- group_by(larvae,dest_site) %>%
+      slice_sample(n=K)
+
     # cleanup for next timestep
     pop <- rbind(pop,larvae)
     
-    if(t_step %% 1000 == 0) print(t_step)
+    if(t_step %% round(nsteps/10) == 0) print(t_step)
     
     # if(t_step%%heatmap_plot_int==0){
     #   f_PlotHeatmapsIBM(larvae,patch_locations,t_step)

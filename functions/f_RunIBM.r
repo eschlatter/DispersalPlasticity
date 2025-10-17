@@ -9,11 +9,13 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
   conn_matrices <- hab$conn_matrices
   npatch <- hab$npatch
   rm(hab)
+  patch_locations$K_i <- as.vector(K) # will need to be careful with this and make sure the indexing is going correctly (rowwise vs columnwise). But go with it for now.
   
   ########## Data structure to describe population ##########
-  start_sites=rep(patch_locations$id,K)
-  # start_sites=rep(patch_locations$id[round(2*npatch/5),round(3*npatch/5)],K)
-  # start_sites=rep(patch_locations$id[1:5],K)
+  
+  
+  start_sites=rep(patch_locations$id,patch_locations$K_i)
+
   pop <- data.frame(t=1,
                     origin_site=NA, 
                     alpha=alpha_start, # note that these are the INDICES of the parameters in v_alphas and v_thetas, not the actual parameter values
@@ -45,11 +47,16 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
     # competition
     # keep only K larvae (at random) at each destination site
     # (if there are fewer than K larvae at a site, they'll all be kept)
-    larvae <- group_by(larvae,dest_site) %>%
-      slice_sample(n=K)
-
+    # larvae <- group_by(larvae,dest_site) %>%
+    #   slice_sample(n=K)
+    for(site in unique(larvae$dest_site)){
+      survivors <- filter(larvae,dest_site==site) %>%
+        slice_sample(n=filter(patch_locations,id==site)$K_i)
+      pop <- rbind(pop,survivors)
+    }
+    
     # cleanup for next timestep
-    pop <- rbind(pop,larvae)
+    # pop <- rbind(pop,larvae)
     
     if(t_step %% round(nsteps/10) == 0) print(t_step)
     

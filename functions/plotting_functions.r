@@ -313,3 +313,12 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25){
   
   grid.arrange(p0,p1,p2,p3,nrow=1)
 }
+
+f_plot_gamma <- function(alpha,theta,kern_xlim=10){
+  g <- ggplot()+
+    xlim(0,kern_xlim)+
+    geom_function(fun=dgamma, args=list(shape=alpha,scale=theta))+
+    labs(title=paste('alpha =',alpha,', theta =',theta))
+  
+  print(g)
+}

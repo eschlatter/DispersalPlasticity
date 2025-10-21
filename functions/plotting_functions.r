@@ -289,11 +289,17 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25){
     theme_minimal()+
     theme(legend.position = 'top')
   
+  fill_colors <- c("First" = "white", "Last" = "red")
+  outline_colors <- c("First" = "red", "Last" = "red")
   p1 <- ggplot(by_t,aes(x=alpha,y=theta))+
     geom_path(alpha=0.75,lwd=0.25)+
     theme_minimal()+
-    geom_point(data=last(by_t),aes(x=alpha,y=theta),color='red')+
-    labs(title='kernel parameters')
+    geom_point(data=first(by_t),aes(x=alpha,y=theta,color="First",fill="First"),pch=21)+
+    geom_point(data=last(by_t),aes(x=alpha,y=theta,color="Last",fill="Last"),pch=21)+
+    scale_color_manual(name = "Point", values=outline_colors)+
+    scale_fill_manual(name = "Point", values=fill_colors)+
+    labs(title='kernel parameters')+
+    theme(legend.position = 'top')
   
   p2 <- ggplot()+
     xlim(0,kern_xlim)+

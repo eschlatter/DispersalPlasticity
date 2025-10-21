@@ -1,4 +1,4 @@
-f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K=1,heatmap_plot_int=NA,sleep_int=0, competition_method='sample'){
+f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,heatmap_plot_int=NA,sleep_int=0, competition_method='sample'){
   starttime <- proc.time()
   if(!(competition_method %in% c('sample','rnorm'))) stop("competition method incorrectly specified")
   
@@ -11,6 +11,7 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
   conn_matrices <- hab$conn_matrices
   npatch <- hab$npatch
   rm(hab)
+  patch_locations$K_i <- as.vector(K) # will need to be careful with this and make sure the indexing is going correctly (rowwise vs columnwise). But go with it for now.
   
   ########## Data structure to describe population ##########
   
@@ -27,7 +28,7 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
   # initialize starting population
   # currently 1 individual (whatever that means) per patch
   # everybody starts with the same kernel and p
-  sim_array[,alpha_start,theta_start,p_start,1] <- K
+  sim_array[,alpha_start,theta_start,p_start,1] <- patch_locations$K_i
   
   for(t in 2:nsteps){
     # reproduction and dispersal and mutation (each patch contributes to other patches)
@@ -59,16 +60,18 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
     if(competition_method=='sample'){
       pop_by_patch <- apply(sim_array[,,,,t],1,sum)
       for(i_patch in 1:npatch){
-        if(pop_by_patch[i_patch]>K){
-          survivors <- sample(x=length(v_alphas)*length(v_thetas)*length(v_p),size = K ,prob = sim_array[i_patch,,,,t],replace=TRUE)
+          survivors <- sample(x=length(v_alphas)*length(v_thetas)*length(v_p),
+                              size = min(pop_by_patch[i_patch],patch_locations$K_i[i_patch]),
+                              prob = sim_array[i_patch,,,,t],
+                              replace=TRUE)
           survivors <- as.data.frame(table(survivors)) %>% mutate(cell=as.numeric(as.character(survivors)))
           
           new <- array(0, dim=dim(sim_array[i_patch,,,,t,drop=F]))
           new[survivors$cell] <- survivors$Freq
           sim_array[i_patch,,,,t] <- new
-        }
-      }
+      } # i_patch
     }
+    
     # Method 2: if a patch has population greater than K, scale the value in each cell by rnorm(mean = K/(sum of all boxes for that patch))
     if(competition_method=='rnorm'){
       pop_by_patch <- apply(sim_array[,,,,t],1,sum)
@@ -120,5 +123,5 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
   
   time_run <- proc.time()-starttime
   ########## Output ##########
-  return(list(sim_melt,by_t,patch_locations, time_run))
+  return(list(sim_melt,by_t,patch_locations, time_run,K))
 }

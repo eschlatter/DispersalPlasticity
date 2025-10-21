@@ -4,7 +4,7 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas){
   # list of patch locations and IDs
   # (dimensions npatch x 3)
   # "location" is the center of the patch
-  patch_locations <- expand.grid(x=1:nx,y=1:ny) %>%
+  patch_locations <- expand.grid(y=1:ny,x=1:nx) %>% # do y first so that patches are ordered columnwise, like the way R fills a matrix
     rowid_to_column(var='id')
   # this is a simple version of patch_locations (all the squares of a grid); eventually we'll want to import a map.
   # I think we'll be able to just keep track of reef patches, not open ocean

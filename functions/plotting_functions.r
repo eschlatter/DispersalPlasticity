@@ -19,38 +19,33 @@ f_PlotAllHeatmapsIBM <- function(pop,patch_locations,plot_int=NA){
     
     plot_alpha <- ggplot(by_patch_i,aes(x=x-0.5,y=y-0.5,fill=alpha_m))+
       geom_tile()+
-      scale_x_continuous(breaks=0:10)+
-      scale_y_continuous(breaks=0:10)+
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
     
     plot_alpha_v <- ggplot(by_patch_i,aes(x=x-0.5,y=y-0.5,fill=alpha_v))+
       geom_tile()+
-      scale_x_continuous(breaks=0:10)+
-      scale_y_continuous(breaks=0:10)+
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
     
     plot_theta <- ggplot(by_patch_i,aes(x=x-0.5,y=y-0.5,fill=theta_m))+
       geom_tile()+
-      scale_x_continuous(breaks=0:10)+
-      scale_y_continuous(breaks=0:10)+
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
     
     plot_theta_v <- ggplot(by_patch_i,aes(x=x-0.5,y=y-0.5,fill=theta_v))+
       geom_tile()+
-      scale_x_continuous(breaks=0:10)+
-      scale_y_continuous(breaks=0:10)+
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
     
     plot_abund <- ggplot(by_patch_i,aes(x=x-0.5,y=y-0.5,fill=popsize))+
       geom_tile()+
-      scale_x_continuous(breaks=0:10)+
-      scale_y_continuous(breaks=0:10)+
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
     
     grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
   }  
@@ -72,21 +67,25 @@ f_PlotHeatmapsIBM <- function(pop_t,patch_locations,t){
     scale_x_continuous(breaks=0:10)+
     scale_y_continuous(breaks=0:10)+
     labs(x='x',y='y')+
-    coord_fixed()
+    coord_fixed()+
+    scale_y_reverse()
+  
   
   plot_theta <- ggplot(by_patch,aes(x=x-0.5,y=y-0.5,fill=theta))+
     geom_tile()+
     scale_x_continuous(breaks=0:10)+
     scale_y_continuous(breaks=0:10)+
     labs(x='x',y='y')+
-    coord_fixed()
+    coord_fixed()+
+    scale_y_reverse()
   
   plot_abund <- ggplot(by_patch,aes(x=x-0.5,y=y-0.5,fill=popsize))+
     geom_tile()+
     scale_x_continuous(breaks=0:10)+
     scale_y_continuous(breaks=0:10)+
     labs(x='x',y='y')+
-    coord_fixed()
+    coord_fixed()+
+    scale_y_reverse()
   
   grid.arrange(plot_alpha, plot_theta, plot_abund,ncol=1,top=paste0('t = ',t))
 }
@@ -138,19 +137,23 @@ f_PlotBubbleMatrix <- function(sim_melt,patch_locations,plot_int=NA){
       geom_hline(yintercept=seq(from=0,to=ny,by=max(round(ny/10),1)))+
       geom_vline(xintercept=seq(from=0,to=nx,by=max(round(nx/10),1)))+
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
     
     ggplot(filter(alpha_df_plot,t==t_i,alpha==v_alphas[1]),aes(x=x+x_add-1,y=y+y_add-1)) +
       geom_tile(aes(fill=popsize)) + 
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
     
     plot_theta <- ggplot(filter(theta_df_plot,t==t_i),aes(x=x+x_add-1,y=y+y_add-1)) +
       geom_point(aes(color=theta,size=popsize),pch=19) + 
       geom_hline(yintercept=seq(from=0,to=ny,by=max(round(ny/10),1)))+
       geom_vline(xintercept=seq(from=0,to=nx,by=max(round(nx/10),1)))+
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
+    
     grid.arrange(plot_alpha, plot_theta,ncol=1,top=paste0('t = ',t_i))
   }
 }
@@ -190,31 +193,36 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA){
       ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_m))+
       geom_tile()+
       labs(x='x',y='y')+
-      coord_fixed() 
+      coord_fixed()+
+      scale_y_reverse()
     
     plot_alpha_v <- filter(alpha_by_patch,t==t_i) %>%
       ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_v))+
       geom_tile()+
       labs(x='x',y='y')+
-      coord_fixed() 
+      coord_fixed()+
+      scale_y_reverse()
     
     plot_theta <- filter(theta_by_patch,t==t_i) %>%
       ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_m))+
       geom_tile()+
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
     
     plot_theta_v <- filter(theta_by_patch,t==t_i) %>%
       ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_v))+
       geom_tile()+
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
     
     plot_abund <- filter(pop_by_patch,t==t_i) %>%
       ggplot(aes(x=x-0.5,y=y-0.5,fill=popsize))+
       geom_tile()+
       labs(x='x',y='y')+
-      coord_fixed()
+      coord_fixed()+
+      scale_y_reverse()
     
     grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
   }
@@ -245,10 +253,9 @@ f_PlotHeatmaps <- function(sim_array_t,patch_locations,t){
   
   plot_alpha <- ggplot(alpha_by_patch,aes(x=x-0.5,y=y-0.5,fill=alpha))+
     geom_tile()+
-    scale_x_continuous(breaks=0:10)+
-    scale_y_continuous(breaks=0:10)+
     labs(x='x',y='y')+
-    coord_fixed()
+    coord_fixed()+
+    scale_y_reverse()
   
   ## map of theta values
   theta_by_patch <- group_by(sim_melt,patch,theta) %>%
@@ -259,10 +266,9 @@ f_PlotHeatmaps <- function(sim_array_t,patch_locations,t){
   
   plot_theta <- ggplot(theta_by_patch,aes(x=x-0.5,y=y-0.5,fill=theta))+
     geom_tile()+
-    scale_x_continuous(breaks=0:10)+
-    scale_y_continuous(breaks=0:10)+
     labs(x='x',y='y')+
-    coord_fixed()
+    coord_fixed()+
+    scale_y_reverse()
   
   ## map of population size
   pop_by_patch <- group_by(sim_melt,patch) %>%
@@ -271,10 +277,9 @@ f_PlotHeatmaps <- function(sim_array_t,patch_locations,t){
   
   plot_abund <- ggplot(pop_by_patch,aes(x=x-0.5,y=y-0.5,fill=popsize))+
     geom_tile()+
-    scale_x_continuous(breaks=0:10)+
-    scale_y_continuous(breaks=0:10)+
     labs(x='x',y='y')+
-    coord_fixed()
+    coord_fixed()+
+    scale_y_reverse()
   
   grid.arrange(plot_alpha, plot_theta, plot_abund,ncol=1,top=paste0('t = ',t))
 }

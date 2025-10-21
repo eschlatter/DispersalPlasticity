@@ -64,7 +64,8 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
                               size = min(pop_by_patch[i_patch],patch_locations$K_i[i_patch]),
                               prob = sim_array[i_patch,,,,t],
                               replace=TRUE)
-          survivors <- as.data.frame(table(survivors)) %>% mutate(cell=as.numeric(as.character(survivors)))
+          survivors <- as.data.frame(table(survivors)) %>% 
+            mutate(cell=as.numeric(as.character(survivors)))
           
           new <- array(0, dim=dim(sim_array[i_patch,,,,t,drop=F]))
           new[survivors$cell] <- survivors$Freq
@@ -77,12 +78,12 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
       pop_by_patch <- apply(sim_array[,,,,t],1,sum)
       scale_by_patch <- ifelse(pop_by_patch>K,pop_by_patch/K,1) # what to divide the patch population by, to reduce it to carrying capacity
       # store the values to scale each cell by
-      scale_by <- array(dim=c(npatch,length(v_alphas),length(v_thetas),length(v_p),1))
+      scale_by_cell <- array(dim=c(npatch,length(v_alphas),length(v_thetas),length(v_p),1))
       for(i_patch in 1:npatch){
-        scale_by[i_patch,,,,1] <- max(rnorm(n=length(v_alphas)*length(v_thetas)*length(v_p),mean=scale_by_patch[i_patch],sd=b/10),0)
+        scale_by_cell[i_patch,,,,1] <- pmax(rnorm(n=length(v_alphas)*length(v_thetas)*length(v_p),mean=scale_by_patch[i_patch],sd=b/10),0)
       }
       # do the scaling
-      sim_array[,,,,t] <- sim_array[,,,,t,drop=F]/scale_by
+      sim_array[,,,,t] <- sim_array[,,,,t,drop=F]/scale_by_cell
     }
     
     

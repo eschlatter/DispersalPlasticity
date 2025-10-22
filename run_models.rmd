@@ -21,10 +21,10 @@ source('functions/utility_functions.R')
 # Parameters
 
 ```{r}
-nx <- 15 # size of space in the x dimension
-ny <- 15 # size of space in the y dimension
+nx <- 10 # size of space in the x dimension
+ny <- 10 # size of space in the y dimension
 
-nsteps <- 20 # timesteps
+nsteps <- 1000 # timesteps
 
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
@@ -40,9 +40,13 @@ mu <- 0.01 # mutation frequency
 # mutation increment specified by v_alphas, v_thetas
 
 # habitat quality (as represented by reproductive output)
-n_good <- 3
-b <- matrix(4, nrow=ny,ncol=nx)
-b[sample(nx*ny,n_good)] <- 8
+n_bad <- 10
+n_good <- 10
+b_bad <- 1
+b_neutral <- 3
+b_good <- 6
+b <- matrix(b_neutral, nrow=ny,ncol=nx)
+b[sample(nx*ny,n_bad+n_good)] <- c(rep(b_bad,n_bad),rep(b_good,n_good))
 
 # habitat quality (as represented by carrying capacity)
 #n_good <- 3
@@ -56,7 +60,13 @@ K <- matrix(3, nrow=ny,ncol=nx)
 
 
 ```{r}
-matrix_out <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,heatmap_plot_int = 500, competition_method = 'rnorm')
+matrix_out <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start=2,mu,b,b_bad=1,b_neutral=3,b_good=6,K,heatmap_plot_int = 500, competition_method = 'sample')
+f_PlotOutput(matrix_out[[2]], kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+f_PlotAllHeatmaps(matrix_out[[1]],matrix_out[[3]])
+#save(K, IBM_out,file='model_runs/20251017_1.RData')
+```
+```{r}
+matrix_out <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start=2,mu,b,b_bad=1,b_neutral=3,b_good=6,K,heatmap_plot_int = 500, competition_method = 'rnorm')
 f_PlotOutput(matrix_out[[2]], kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
 f_PlotAllHeatmaps(matrix_out[[1]],matrix_out[[3]])
 #save(K, IBM_out,file='model_runs/20251017_1.RData')
@@ -65,10 +75,10 @@ f_PlotAllHeatmaps(matrix_out[[1]],matrix_out[[3]])
 ```{r}
 #load('model_runs/20251017_1.RData')
 
-IBM_out <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,heatmap_plot_int = 500)
+IBM_out <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start=2,mu,b,b_bad=1,b_neutral=3,b_good=6,K,heatmap_plot_int = 500)
 f_PlotOutput(IBM_out[[2]], kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
 f_PlotAllHeatmapsIBM(IBM_out[[1]],IBM_out[[3]])
-#save(K, IBM_out,file='model_runs/20251017_1.RData')
+#save(b, IBM_out,file='model_runs/20251022_3.RData')
 ```
 
 

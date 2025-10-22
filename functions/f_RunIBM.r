@@ -1,4 +1,4 @@
-f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,heatmap_plot_int){
+f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,heatmap_plot_int){
   starttime <- proc.time()
   ########## Data structures to describe space and dispersal ##########
   hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
@@ -13,14 +13,13 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
   patch_locations$b_i <- as.vector(b)
   
   ########## Data structure to describe population ##########
-  
-  
   start_sites=rep(patch_locations$id,patch_locations$K_i)
 
   pop <- data.frame(t=1,
                     origin_site=NA, 
                     alpha=alpha_start, # note that these are the INDICES of the parameters in v_alphas and v_thetas, not the actual parameter values
-                    theta=theta_start, 
+                    theta=theta_start,
+                    p=p_start,
                     dest_site=start_sites) # start at carrying capacity everywhere
   
   ########## Simulation ##########
@@ -39,7 +38,14 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
     
     # dispersal
     for(i in 1:nrow(larvae)){
-      dests <- conn_matrices[larvae[i,]$alpha, larvae[i,]$theta, larvae[i,]$origin_site, ]
+      b_i <- patch_locations$b_i[larvae$origin_site[i]] # habitat quality (b) in larva's origin patch. Maybe at this point it makes sense to just add this as a column.
+      i_alpha <- larvae$alpha[i] # current larva's alpha index
+      alpha_plastic <- case_when( # current larva's effective alpha index (given plasticity)
+        b_i==b_neutral ~ i_alpha,
+        b_i==b_bad ~ oob_squish(i_alpha+round(larvae$p[i]),c(1,length(v_alphas))), # we'll want something more sophisticated than round(v_p[i_p]) eventually
+        b_i==b_good ~ oob_squish(i_alpha-round(larvae$p[i]),c(1,length(v_alphas)))
+      )
+      dests <- conn_matrices[alpha_plastic, larvae[i,]$theta, larvae[i,]$origin_site, ]
       larvae[i,]$dest_site <- sample(1:npatch,size=1,prob=dests)
     } # i
     

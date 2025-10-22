@@ -1,4 +1,4 @@
-f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,heatmap_plot_int=NA,sleep_int=0, competition_method='sample'){
+f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,heatmap_plot_int=NA,sleep_int=0, competition_method='sample'){
   starttime <- proc.time()
   if(!(competition_method %in% c('sample','rnorm'))) stop("competition method incorrectly specified")
   
@@ -33,27 +33,34 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
   
   for(t in 2:nsteps){
     # reproduction and dispersal and mutation (each patch contributes to other patches)
-    for(i_alpha in 1:length(v_alphas)){
-      for(i_theta in 1:length(v_thetas)){
-        cm <- conn_matrices[i_alpha,i_theta,,]
-        for(i_patch in 1:npatch){
-          cell_popsize <- sim_array[i_patch,i_alpha,i_theta,p_start,t-1]
-          b_i <- patch_locations$b_i[i_patch] # reproductive rate in the patch
-          # no mutation
-          sim_array[,i_alpha,i_theta,p_start,t] <- b_i*cell_popsize*(1-mu)*(cm[i_patch,]) + sim_array[,i_alpha,i_theta,p_start,t]
-          
-          # mutation
-          # boundaries at the edge of allowable kernel params: collecting
-          # (e.g., at minimum value of alpha, if mutation would lead to lower alpha, it just keeps the minimum)
-          # surely there's a more efficient way to do this, but we'll go with this for now
-          sim_array[,min(i_alpha+1,length(v_alphas)),i_theta,p_start,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,min(i_alpha+1,length(v_alphas)),i_theta,p_start,t]
-          sim_array[,max(1,i_alpha-1),i_theta,p_start,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,max(1,i_alpha-1),i_theta,p_start,t]
-          sim_array[,i_alpha,min(i_theta+1,length(v_thetas)),p_start,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,i_alpha,min(i_theta+1,length(v_thetas)),p_start,t]
-          sim_array[,i_alpha,max(1,i_theta-1),p_start,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,i_alpha,max(1,i_theta-1),p_start,t]
-          
-        } # i_patch
-      } # i_theta
-    } # i_alpha
+    for(i_patch in 1:npatch){
+      b_i <- patch_locations$b_i[i_patch] # reproductive rate in the patch
+      for(i_alpha in 1:length(v_alphas)){
+        for(i_theta in 1:length(v_thetas)){
+          for(i_p in 1:length(v_p)){
+            alpha_plastic <- case_when(
+              b_i==b_neutral ~ i_alpha,
+              b_i==b_bad ~ oob_squish(i_alpha+round(v_p[i_p]),c(1,length(v_alphas))), # we'll want something more sophisticated than round(v_p[i_p]) eventually
+              b_i==b_good ~ oob_squish(i_alpha-round(v_p[i_p]),c(1,length(v_alphas)))
+            )
+            cm <- conn_matrices[alpha_plastic,i_theta,,]
+            cell_popsize <- sim_array[i_patch,i_alpha,i_theta,i_p,t-1]
+            
+            # no mutation
+            sim_array[,i_alpha,i_theta,i_p,t] <- b_i*cell_popsize*(1-mu)*(cm[i_patch,]) + sim_array[,i_alpha,i_theta,i_p,t]
+            
+            # mutation
+            # boundaries at the edge of allowable kernel params: collecting
+            # (e.g., at minimum value of alpha, if mutation would lead to lower alpha, it just keeps the minimum)
+            # surely there's a more efficient way to do this, but we'll go with this for now
+            sim_array[,min(i_alpha+1,length(v_alphas)),i_theta,i_p,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,min(i_alpha+1,length(v_alphas)),i_theta,i_p,t]
+            sim_array[,max(1,i_alpha-1),i_theta,i_p,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,max(1,i_alpha-1),i_theta,i_p,t]
+            sim_array[,i_alpha,min(i_theta+1,length(v_thetas)),i_p,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,i_alpha,min(i_theta+1,length(v_thetas)),i_p,t]
+            sim_array[,i_alpha,max(1,i_theta-1),i_p,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,i_alpha,max(1,i_theta-1),i_p,t]
+          } # i_p
+        } # i_theta
+      } # i_alpha
+    } # i_patch
     
     ## Competition
     # Method 1: if a patch has population greater than K, sample K individuals and distribute them among cells in that patch
@@ -61,22 +68,22 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
     if(competition_method=='sample'){
       pop_by_patch <- apply(sim_array[,,,,t],1,sum)
       for(i_patch in 1:npatch){
-          survivors <- sample(x=length(v_alphas)*length(v_thetas)*length(v_p),
-                              size = min(pop_by_patch[i_patch],patch_locations$K_i[i_patch]),
-                              prob = sim_array[i_patch,,,,t],
-                              replace=TRUE)
-          survivors <- as.data.frame(table(survivors)) %>% 
-            mutate(cell=as.numeric(as.character(survivors)))
-          
-          new <- array(0, dim=dim(sim_array[i_patch,,,,t,drop=F]))
-          new[survivors$cell] <- survivors$Freq
-          sim_array[i_patch,,,,t] <- new
+        survivors <- sample(x=length(v_alphas)*length(v_thetas)*length(v_p),
+                            size = min(pop_by_patch[i_patch],patch_locations$K_i[i_patch]),
+                            prob = sim_array[i_patch,,,,t],
+                            replace=TRUE)
+        survivors <- as.data.frame(table(survivors)) %>% 
+          mutate(cell=as.numeric(as.character(survivors)))
+        
+        new <- array(0, dim=dim(sim_array[i_patch,,,,t,drop=F]))
+        new[survivors$cell] <- survivors$Freq
+        sim_array[i_patch,,,,t] <- new
       } # i_patch
     }
     
     # Method 2: if a patch has population greater than K, scale the value in each cell by rnorm(mean = K/(sum of all boxes for that patch))
     if(competition_method=='rnorm'){
-      pop_by_patch <- apply(sim_array[,,,,t],1,sum)
+      pop_by_patch <- apply(sim_array[,,,,t],1,sum,na.rm=TRUE)
       scale_by_patch <- ifelse(pop_by_patch>K,pop_by_patch/K,1) # what to divide the patch population by, to reduce it to carrying capacity
       # store the values to scale each cell by
       scale_by_cell <- array(dim=c(npatch,length(v_alphas),length(v_thetas),length(v_p),1))

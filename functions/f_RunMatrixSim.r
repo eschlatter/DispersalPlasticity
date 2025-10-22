@@ -11,7 +11,8 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
   conn_matrices <- hab$conn_matrices
   npatch <- hab$npatch
   rm(hab)
-  patch_locations$K_i <- as.vector(K) # will need to be careful with this and make sure the indexing is going correctly (rowwise vs columnwise). But go with it for now.
+  patch_locations$K_i <- as.vector(K)
+  patch_locations$b_i <- as.vector(b)
   
   ########## Data structure to describe population ##########
   
@@ -37,18 +38,18 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
         cm <- conn_matrices[i_alpha,i_theta,,]
         for(i_patch in 1:npatch){
           cell_popsize <- sim_array[i_patch,i_alpha,i_theta,p_start,t-1]
-          
+          b_i <- patch_locations$b_i[i_patch] # reproductive rate in the patch
           # no mutation
-          sim_array[,i_alpha,i_theta,p_start,t] <- b*cell_popsize*(1-mu)*(cm[i_patch,]) + sim_array[,i_alpha,i_theta,p_start,t]
+          sim_array[,i_alpha,i_theta,p_start,t] <- b_i*cell_popsize*(1-mu)*(cm[i_patch,]) + sim_array[,i_alpha,i_theta,p_start,t]
           
           # mutation
           # boundaries at the edge of allowable kernel params: collecting
           # (e.g., at minimum value of alpha, if mutation would lead to lower alpha, it just keeps the minimum)
           # surely there's a more efficient way to do this, but we'll go with this for now
-          sim_array[,min(i_alpha+1,length(v_alphas)),i_theta,p_start,t] <- b*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,min(i_alpha+1,length(v_alphas)),i_theta,p_start,t]
-          sim_array[,max(1,i_alpha-1),i_theta,p_start,t] <- b*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,max(1,i_alpha-1),i_theta,p_start,t]
-          sim_array[,i_alpha,min(i_theta+1,length(v_thetas)),p_start,t] <- b*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,i_alpha,min(i_theta+1,length(v_thetas)),p_start,t]
-          sim_array[,i_alpha,max(1,i_theta-1),p_start,t] <- b*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,i_alpha,max(1,i_theta-1),p_start,t]
+          sim_array[,min(i_alpha+1,length(v_alphas)),i_theta,p_start,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,min(i_alpha+1,length(v_alphas)),i_theta,p_start,t]
+          sim_array[,max(1,i_alpha-1),i_theta,p_start,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,max(1,i_alpha-1),i_theta,p_start,t]
+          sim_array[,i_alpha,min(i_theta+1,length(v_thetas)),p_start,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,i_alpha,min(i_theta+1,length(v_thetas)),p_start,t]
+          sim_array[,i_alpha,max(1,i_theta-1),p_start,t] <- b_i*cell_popsize*(mu/4)*(cm[i_patch,]) + sim_array[,i_alpha,max(1,i_theta-1),p_start,t]
           
         } # i_patch
       } # i_theta
@@ -80,7 +81,7 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
       # store the values to scale each cell by
       scale_by_cell <- array(dim=c(npatch,length(v_alphas),length(v_thetas),length(v_p),1))
       for(i_patch in 1:npatch){
-        scale_by_cell[i_patch,,,,1] <- pmax(rnorm(n=length(v_alphas)*length(v_thetas)*length(v_p),mean=scale_by_patch[i_patch],sd=b/10),0)
+        scale_by_cell[i_patch,,,,1] <- pmax(rnorm(n=length(v_alphas)*length(v_thetas)*length(v_p),mean=scale_by_patch[i_patch],sd=mean(b)/10),0)
       }
       # do the scaling
       sim_array[,,,,t] <- sim_array[,,,,t,drop=F]/scale_by_cell

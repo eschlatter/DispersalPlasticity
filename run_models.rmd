@@ -21,10 +21,10 @@ source('functions/utility_functions.R')
 # Parameters
 
 ```{r}
-nx <- 10 # size of space in the x dimension
-ny <- 10 # size of space in the y dimension
+nx <- 15 # size of space in the x dimension
+ny <- 15 # size of space in the y dimension
 
-nsteps <- 1000 # timesteps
+nsteps <- 20 # timesteps
 
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
@@ -38,19 +38,37 @@ p_start <- 1 # index (in v_p) of plasticity parameter initial value
 
 mu <- 0.01 # mutation frequency
 # mutation increment specified by v_alphas, v_thetas
-b <- 3
+
+# habitat quality (as represented by reproductive output)
+n_good <- 3
+b <- matrix(4, nrow=ny,ncol=nx)
+b[sample(nx*ny,n_good)] <- 8
 
 # habitat quality (as represented by carrying capacity)
-n_good <- 5
-K <- matrix(1, nrow=ny,ncol=nx)
-K[sample(nx*ny,n_good)] <- 8
+#n_good <- 3
+K <- matrix(3, nrow=ny,ncol=nx)
+#K[c(1,20,21,30)] <- 8
+#K[sample(nx*ny,n_good)] <- 8
   
 # K <- data.frame(site=1:(nx*ny),K_i=5)
 # K$K_i[sample(nx*ny,n_bad)] <- 1
+```
 
+
+```{r}
+matrix_out <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,heatmap_plot_int = 500, competition_method = 'rnorm')
+f_PlotOutput(matrix_out[[2]], kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+f_PlotAllHeatmaps(matrix_out[[1]],matrix_out[[3]])
+#save(K, IBM_out,file='model_runs/20251017_1.RData')
+```
+
+```{r}
+#load('model_runs/20251017_1.RData')
 
 IBM_out <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,heatmap_plot_int = 500)
 f_PlotOutput(IBM_out[[2]], kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+f_PlotAllHeatmapsIBM(IBM_out[[1]],IBM_out[[3]])
+#save(K, IBM_out,file='model_runs/20251017_1.RData')
 ```
 
 

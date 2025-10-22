@@ -9,7 +9,8 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
   conn_matrices <- hab$conn_matrices
   npatch <- hab$npatch
   rm(hab)
-  patch_locations$K_i <- as.vector(K) # will need to be careful with this and make sure the indexing is going correctly (rowwise vs columnwise). But go with it for now.
+  patch_locations$K_i <- as.vector(K)
+  patch_locations$b_i <- as.vector(b)
   
   ########## Data structure to describe population ##########
   
@@ -27,8 +28,12 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
     adults <- filter(pop,t==t_step)
     
     # reproduction
-    larvae <- do.call("rbind", replicate(b, adults, simplify = FALSE)) %>%
-      mutate(origin_site=dest_site) %>%
+    larvae <- adults[FALSE,]
+    for(i_adult in 1:nrow(adults)){
+      b_i <- patch_locations$b_i[adults$dest_site[i_adult]] # get the birth rate in that adult's patch
+      larvae <- rbind(larvae,bind_rows(replicate(b_i, adults[i_adult,], simplify = FALSE))) 
+    }
+    larvae <- mutate(larvae, origin_site=dest_site) %>%
       mutate(dest_site=NA) %>%
       mutate(t=t_step+1)
     

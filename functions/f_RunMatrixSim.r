@@ -38,12 +38,8 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
       for(i_alpha in 1:length(v_alphas)){
         for(i_theta in 1:length(v_thetas)){
           for(i_p in 1:length(v_p)){
-            alpha_plastic <- case_when(
-              b_i==b_neutral ~ i_alpha,
-              b_i==b_bad ~ oob_squish(i_alpha+round(v_p[i_p]),c(1,length(v_alphas))), # we'll want something more sophisticated than round(v_p[i_p]) eventually
-              b_i==b_good ~ oob_squish(i_alpha-round(v_p[i_p]),c(1,length(v_alphas)))
-            )
-            cm <- conn_matrices[alpha_plastic,i_theta,,]
+            eff_params <- f_plasticity(b_i,i_p,i_alpha,i_theta,b_bad,b_neutral,b_good,length(v_alphas),length(v_thetas))
+            cm <- conn_matrices[eff_params[[1]],eff_params[[2]],,]
             cell_popsize <- sim_array[i_patch,i_alpha,i_theta,i_p,t-1]
             
             # no mutation
@@ -68,16 +64,15 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
     if(competition_method=='sample'){
       pop_by_patch <- apply(sim_array[,,,,t],1,sum)
       for(i_patch in 1:npatch){
-        survivors <- sample(x=length(v_alphas)*length(v_thetas)*length(v_p),
-                            size = min(pop_by_patch[i_patch],patch_locations$K_i[i_patch]),
-                            prob = sim_array[i_patch,,,,t],
-                            replace=TRUE)
-        survivors <- as.data.frame(table(survivors)) %>% 
-          mutate(cell=as.numeric(as.character(survivors)))
-        
-        new <- array(0, dim=dim(sim_array[i_patch,,,,t,drop=F]))
-        new[survivors$cell] <- survivors$Freq
-        sim_array[i_patch,,,,t] <- new
+        # sample to select who will survive competition
+        survivors <- sample(x=length(v_alphas)*length(v_thetas)*length(v_p), # could go in any cell
+                            size = min(pop_by_patch[i_patch],patch_locations$K_i[i_patch]), # should be minimum(patch population, K) survivors of competition
+                            prob = sim_array[i_patch,,,,t], # go into each cell with probabilities according to sim_array
+                            replace=TRUE) # more than one can go in the same cell
+        # use that sample to update sim_array accordingly
+        a <- tabulate(survivors)
+        survivors <- c(a,rep(0,length(v_alphas)*length(v_thetas)*length(v_p)-length(a)))
+        sim_array[i_patch,,,,t] <- survivors
       } # i_patch
     }
     
@@ -96,10 +91,10 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
     
     
     ## output
-    if(t%%heatmap_plot_int==0){
-      f_PlotHeatmaps(sim_array[,,,,t],patch_locations,t)
-      Sys.sleep(sleep_int)
-    }
+    # if(t%%heatmap_plot_int==0){
+    #   f_PlotHeatmaps(sim_array[,,,,t],patch_locations,t)
+    #   Sys.sleep(sleep_int)
+    # }
     if(t %% round(nsteps/10) == 0) print(t)
     
   } # t
@@ -131,6 +126,6 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
   by_t <- mutate(by_t, alpha=alpha/popsize, theta=theta/popsize)
   
   time_run <- proc.time()-starttime
-  ########## Output ##########
+  ######### Output ##########
   return(list(sim_melt,by_t,patch_locations, time_run,K))
 }

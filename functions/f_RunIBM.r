@@ -45,16 +45,10 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
     
     # dispersal
     for(i in 1:nrow(larvae)){
-      # b_i <- patch_locations$b_i[larvae$origin_site[i]] # habitat quality (b) in larva's origin patch. Maybe at this point it makes sense to just add this as a column.
-      # i_alpha <- larvae$alpha[i] # current larva's alpha index
-      # alpha_plastic <- case_when( # current larva's effective alpha index (given plasticity)
-      #   b_i==b_neutral ~ i_alpha,
-      #   b_i==b_bad ~ oob_squish(i_alpha+round(larvae$p[i]),c(1,length(v_alphas))), # we'll want something more sophisticated than round(v_p[i_p]) eventually
-      #   b_i==b_good ~ oob_squish(i_alpha-round(larvae$p[i]),c(1,length(v_alphas)))
-      # )
-      # dests <- conn_matrices[alpha_plastic, larvae[i,]$theta, larvae[i,]$origin_site, ]
-      dests <- conn_matrices[larvae$alpha[i], larvae$theta[i], larvae$origin_site[i], ]
-      larvae[i,]$dest_site <- sample(1:npatch,size=1,prob=dests)
+      b_i <- patch_locations$b_i[larvae$origin_site[i]] # habitat quality (b) in larva's origin patch. Maybe at this point it makes sense to just add this as a column.
+      eff_params <- f_plasticity(b_i,larvae$p[i],larvae$alpha[i],larvae$theta[i],b_bad,b_neutral,b_good,length(v_alphas),length(v_thetas))
+      dests <- conn_matrices[eff_params[[1]], eff_params[[2]], larvae$origin_site[i], ]
+      larvae$dest_site[i] <- sample(1:npatch,size=1,prob=dests)
     } # i
     
     # mutation

@@ -28,6 +28,7 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
   
   ########## Simulation ##########
   for(t_step in 1:nsteps){
+    
     # reproduction
     # create a dataframe with the same columns as adults and sum(K*b) number of rows, all empty
     larvae <- adults[FALSE,]
@@ -36,10 +37,13 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
     on_row_larvae <- 1 #first row of larvae available for filling
     for(i_adult in 1:nrow(adults)){
       b_i <- patch_locations$b_i[adults$dest_site[i_adult]] # get the birth rate in that adult's patch
-      larvae[on_row_larvae:(on_row_larvae+b_i-1),] <- adults[i_adult,]
-      on_row_larvae <- on_row_larvae+b_i
+      if(b_i>0){
+        larvae[on_row_larvae:(on_row_larvae+b_i-1),] <- adults[i_adult,]
+        on_row_larvae <- on_row_larvae+b_i
+      }
     }
     larvae <- mutate(larvae, origin_site=dest_site) %>%
+      filter(!is.na(origin_site)) %>%  # get rid of extra rows in larvae
       mutate(dest_site=NA) %>%
       mutate(t=t_step+1) ### if we were going to add b_i to the dataframe, this would be the place to do it
     
@@ -73,6 +77,7 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
     }
     
     # cleanup for next timestep
+    adults <- filter(adults,!is.na(dest_site)) # get rid of extra rows in adults
     pop[[t_step]] <- adults
     
     if(t_step %% round(nsteps/10) == 0) print(t_step)

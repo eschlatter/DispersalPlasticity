@@ -63,7 +63,7 @@ f_RunMatrixSim <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_
     # (with probability according to the current abundance of each cell)
     if(competition_method=='sample'){
       pop_by_patch <- apply(sim_array[,,,,t],1,sum)
-      for(i_patch in 1:npatch){
+      for(i_patch in which(pop_by_patch>0)){
         # sample to select who will survive competition
         survivors <- sample(x=length(v_alphas)*length(v_thetas)*length(v_p), # could go in any cell
                             size = min(pop_by_patch[i_patch],patch_locations$K_i[i_patch]), # should be minimum(patch population, K) survivors of competition

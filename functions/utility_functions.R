@@ -5,7 +5,9 @@ library(gridExtra)
 # b_bad, b_good, b_neutral: values of b that trigger plastic responses
 # n_alpha, n_theta: length of v_alpha and v_theta; used to avoid exceeding the maximum parameter values with plastic response
 f_plasticity <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_good=9, n_alpha=5, n_theta=5){
-  if(b_good!=b_neutral) alpha_add <- round((b_i-b_neutral)/(b_good-b_neutral)) else alpha_add <- 0
+  if(b_good!=b_neutral){ # check for the possibility that there isn't variation in b. Assuming there is:
+    alpha_add <- round((b_neutral-b_i)/(b_good-b_neutral))} # calculate what to add to the alpha index, based on plasticity. It's -1, 0, or +1.
+  else alpha_add <- 0
   alpha_plastic <- oob_squish(alpha_i+round(p_i)*alpha_add, c(1,n_alpha))
   theta_plastic <- theta_i
   return(list(alpha_plastic=alpha_plastic, theta_plastic=theta_plastic))

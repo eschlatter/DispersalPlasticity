@@ -163,8 +163,11 @@ f_PlotBubbleMatrix <- function(sim_melt,patch_locations,plot_int=NA){
 #   sim_array_t: just the portion of sim_array from timestep t
 #   patch_locations for mapmaking
 f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA){
-  if(is.na(plot_int)) plot_int <- round(max(sim_melt$t)/10) # set the plotting interval, unless specified
-  plot_ints <- seq(from=plot_int,to=max(sim_melt$t),by=plot_int)
+  if(prod(is.na(plot_int))==1){
+    plot_int <- round(max(sim_melt$t)/10) # set the plotting interval, unless specified
+    plot_ints <- seq(from=plot_int,to=max(sim_melt$t),by=plot_int)
+  } 
+  else plot_ints <- plot_int
   
   # process data
   alpha_by_patch <- group_by(sim_melt,patch,alpha,t) %>%

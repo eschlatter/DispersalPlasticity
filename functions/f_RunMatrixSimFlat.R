@@ -1,6 +1,5 @@
-f_RunMatrixSimFlat <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,sleep_int=0, competition_method='sample'){
+f_RunMatrixSimFlat <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,plot_kernel_dynamic=FALSE){
   starttime <- proc.time()
-  if(!(competition_method %in% c('sample','rnorm'))) stop("competition method incorrectly specified")
   
   ########## Data structures to describe space and dispersal ##########
   # see utility functions/f_MakeHabitat for details on what's in each object
@@ -22,10 +21,10 @@ f_RunMatrixSimFlat <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,th
   
   ###### 1. matrix_index
   ## list of all combinations of patch, alpha, theta, p -- in the order they're represented in Tij and Pij
-    # patch (spatial location)
-    # alpha index (alpha is the kernel shape parameter; this is the index of the value found in v_alphas)
-    # theta (theta is the kernel scale parameter; this is the index of the value found in v_thetas)
-    # p (p is the plasticity parameter; this is the index of the value found in v_p)
+  # patch (spatial location)
+  # alpha index (alpha is the kernel shape parameter; this is the index of the value found in v_alphas)
+  # theta (theta is the kernel scale parameter; this is the index of the value found in v_thetas)
+  # p (p is the plasticity parameter; this is the index of the value found in v_p)
   matrix_index <- expand.grid(patch=1:npatch,alpha=1:length(v_alphas),theta=1:length(v_thetas),p=1:length(v_p))
   
   ###### 2. Tij
@@ -33,7 +32,7 @@ f_RunMatrixSimFlat <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,th
   
   # initialize it
   Tij <- matrix(0,nrow=nrow(matrix_index),ncol=nrow(matrix_index))
-    
+  
   # first, list out all the "groups" -- i.e., unique combinations of parameters.
   # each of these represents a contiguous (npatch x npatch) section of the transition matrix Tij
   # e.g., the first npatch x npatch cells in Tij represent dispersal from patch i to j,
@@ -113,38 +112,51 @@ f_RunMatrixSimFlat <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,th
     temp_newpop <- Pij[,t-1] %*% Tij_sparse # technically the Pij vector should be a row vector rather than a column vector, but R doesn't care
     
     ## Competition
-    # Method 1: if a patch has population greater than K, sample K individuals and distribute them among cells in that patch
+    # if a patch has population greater than K, sample K individuals and distribute them among cells in that patch
     # (with probability according to the current abundance of each cell)
-    if(competition_method=='sample'){
-      for(i_patch in 1:npatch){
-        patch_inds_Pij <- which(matrix_index$patch==i_patch) # get the row numbers in Pij corresponding to the focal patch
-        patch_abund <- sum(temp_newpop[patch_inds_Pij]) # calculate abundance in the patch
-        if(patch_abund>0){ # if abundance is (less than or) equal to 0, the relevant Pij entries for the next timestep are already 0, so we don't need to do anything else
-          # choose min(abundance,K) survivors, assigned to parameter values according to the current abundances in those cells
-          survivors <- sample(x=length(patch_inds_Pij), # there are this many cells (i.e., combos of parameter values) for the patch
-                              size=min(patch_abund,patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
-                              prob = temp_newpop[patch_inds_Pij], # probability of each cell being chosen depends on its current abundance
-                              replace=TRUE) |> # same cell can be chosen by multiple individuals
-            tabulate() # make into a vector with the number of individuals that chose each cell
-          survivors <- c(survivors,rep(0, length(patch_inds_Pij) - length(survivors))) # add zeros to the end for cells past the last one chosen
-          Pij[patch_inds_Pij,t] <- survivors # put those surviving larvae in the right place in Pij at the new timestep
-        }
+    for(i_patch in 1:npatch){
+      patch_inds_Pij <- which(matrix_index$patch==i_patch) # get the row numbers in Pij corresponding to the focal patch
+      patch_abund <- sum(temp_newpop[patch_inds_Pij]) # calculate abundance in the patch
+      if(patch_abund>0){ # if abundance is (less than or) equal to 0, the relevant Pij entries for the next timestep are already 0, so we don't need to do anything else
+        # choose min(abundance,K) survivors, assigned to parameter values according to the current abundances in those cells
+        survivors <- sample(x=length(patch_inds_Pij), # there are this many cells (i.e., combos of parameter values) for the patch
+                            size=min(patch_abund,patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
+                            prob = temp_newpop[patch_inds_Pij], # probability of each cell being chosen depends on its current abundance
+                            replace=TRUE) |> # same cell can be chosen by multiple individuals
+          tabulate() # make into a vector with the number of individuals that chose each cell
+        survivors <- c(survivors,rep(0, length(patch_inds_Pij) - length(survivors))) # add zeros to the end for cells past the last one chosen
+        Pij[patch_inds_Pij,t] <- survivors # put those surviving larvae in the right place in Pij at the new timestep
       }
     }
     
-    # # Method 2: if a patch has population greater than K, scale the value in each cell by rnorm(mean = K/(sum of all boxes for that patch))
-    # if(competition_method=='rnorm'){
-    #   pop_by_patch <- apply(sim_array[,,,,t],1,sum,na.rm=TRUE)
-    #   scale_by_patch <- ifelse(pop_by_patch>K,pop_by_patch/K,1) # what to divide the patch population by, to reduce it to carrying capacity
-    #   # store the values to scale each cell by
-    #   scale_by_cell <- array(dim=c(npatch,length(v_alphas),length(v_thetas),length(v_p),1))
-    #   for(i_patch in 1:npatch){
-    #     scale_by_cell[i_patch,,,,1] <- pmax(rnorm(n=length(v_alphas)*length(v_thetas)*length(v_p),mean=scale_by_patch[i_patch],sd=mean(b)/10),0)
-    #   }
-    #   # do the scaling
-    #   sim_array[,,,,t] <- sim_array[,,,,t,drop=F]/scale_by_cell
-    # }
-
+    if(plot_kernel_dynamic==TRUE & t %% round(nsteps/100) == 0){
+      # histogram of kernel means (alpha*theta)
+      thisstep <- cbind(Pij[,t],matrix_index) %>%
+        rename(popsize=paste0('Pij[, t]')) %>%
+        filter(popsize>0) %>%
+        mutate(kern_mean=v_alphas[alpha]*v_thetas[theta],
+               kern_mode=ifelse(v_alphas[alpha]<1,0,(v_alphas[alpha]-1)*v_thetas[theta]))
+      break_vec <- seq(from=0,to=1,length.out=50)
+      #break_vec <- seq(from=min(thisstep$kern_mode),to=max(thisstep$kern_mode),length.out=20)
+      break_inds <- data.frame(kern_mode_bin=1:length(break_vec),l_end=break_vec,r_end=lead(break_vec))[1:19,]
+      thisstep <- mutate(thisstep, kern_mode_bin = cut(kern_mode,breaks=break_vec, include.lowest=TRUE,labels=FALSE)) %>%
+        group_by(kern_mode_bin) %>%
+        summarize(popsize=sum(popsize))%>%
+        right_join(break_inds,by='kern_mode_bin')
+      thisstep$popsize[is.na(thisstep$popsize)] <- 0
+      
+      mode_ticks <- expand.grid(alpha=v_alphas,theta=v_thetas) %>%
+        mutate(mode=ifelse(alpha<1,0,(alpha-1)*theta))
+      
+      g <- ggplot(thisstep,aes(x=l_end,y=popsize))+
+        geom_bar(stat='identity')+
+        labs(x='kernel mode',title=paste("t =", t))+
+        geom_point(data=filter(mode_ticks,mode<=max(break_vec)),aes(x=mode),y=0)+
+        xlim(-.04,max(break_vec))+
+        ylim(0,sum(K))
+      print(g)
+    }
+    
     if(t %% round(nsteps/10) == 0) print(t)
     
   } # t
@@ -163,7 +175,7 @@ f_RunMatrixSimFlat <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,th
                     alpha=sum(alpha_value*popsize),theta=sum(theta_value*popsize),popsize=sum(popsize))
   # then divide by total popsize (denominator of the mean)
   by_t <- mutate(by_t, alpha=alpha/popsize, theta=theta/popsize)
-
+  
   time_run <- proc.time()-starttime
   # ######### Output ##########
   return(list(sim_melt=sim_melt,

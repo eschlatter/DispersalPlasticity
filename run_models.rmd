@@ -21,16 +21,16 @@ source('functions/utility_functions.R')
 # Parameters
 
 ```{r}
-nx <- 13 # size of space in the x dimension
-ny <- 7 # size of space in the y dimension
+nx <- 10 # size of space in the x dimension
+ny <- 10 # size of space in the y dimension
 
 nsteps <- 5000 # timesteps
 
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
-v_thetas <- seq(from=0.01,to=10,length.out=10) # values the scale parameter can take
-alpha_start <- 2 # index (in v_alphas) of shape parameter initial value
-theta_start <- 2 # index in (v_thetas) of scale parameter initial value
+v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
+alpha_start <- 3 # index (in v_alphas) of shape parameter initial value
+theta_start <- 3 # index in (v_thetas) of scale parameter initial value
 
 # plasticity parameter currently doesn't affect anything or evolve
 v_p <- seq(from=0,to=0.9,length.out=2) # values the plasticity parameter can take
@@ -43,29 +43,41 @@ mu <- 0.01 # mutation frequency
 n_bad <- 0*round(nx*ny/4)
 n_good <- 0*round(nx*ny/4)
 b_bad <- 2
-b_neutral <- 3
+b_neutral <- 10
 b_good <- 18
 b <- matrix(b_neutral, nrow=ny,ncol=nx)
 b[sample(nx*ny,n_bad+n_good)] <- c(rep(b_bad,n_bad),rep(b_good,n_good))
 
 # habitat quality (as represented by carrying capacity)
 n_good <- .5*nx*ny
-K <- matrix(0, nrow=ny,ncol=nx)
+K <- matrix(5, nrow=ny,ncol=nx)
 #K[sample(nx*ny,n_good)] <- 10
-K[,c(1,2,3,11,12,13)] <- 3
+#K[,c(1,2,3,11,12,13)] <- 3
+K[1:3,1:3] <- 10
+K[8:10,8:10] <- 10
+
   
 # K <- data.frame(site=1:(nx*ny),K_i=5)
 # K$K_i[sample(nx*ny,n_bad)] <- 1
 ```
 
 ```{r}
-matrix_flat_out <- f_RunMatrixSimFlat(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,competition_method = 'sample')
+matrix_flat_out <- f_RunMatrixSimFlat(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start=3,theta_start=3,p_start,mu,b,b_bad,b_neutral,b_good,K,plot_kernel_dynamic=TRUE)
 
 f_PlotOutput(matrix_flat_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
 summarize(filter(matrix_flat_out$by_t,t>=0.75*nsteps),med_alpha=median(alpha),med_theta=median(theta))
-#f_PlotAllHeatmaps(matrix_flat_out$sim_melt,matrix_flat_out$patch_locations)
+f_PlotAllHeatmaps(matrix_flat_out$sim_melt,matrix_flat_out$patch_locations,plot_int=c(seq(from=300,to=800,by=100),seq(from=2500,to=3000,by=100)))
 ```
 
+```{r}
+alpha_start <- 3
+theta_start <- 3
+matrix_flat_out_2 <- f_RunMatrixSimFlat(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,competition_method = 'sample')
+
+f_PlotOutput(matrix_flat_out_2$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+summarize(filter(matrix_flat_out_2$by_t,t>=0.75*nsteps),med_alpha=median(alpha),med_theta=median(theta))
+f_PlotAllHeatmaps(matrix_flat_out_2$sim_melt,matrix_flat_out$patch_locations)
+```
 
 ## old stuff
 
@@ -102,16 +114,16 @@ f_PlotAllHeatmapsIBM(IBM_out[[1]],IBM_out[[3]])
 # Multiple runs at a time
 ## Matrix
 ```{r}
-nx <- 13 # size of space in the x dimension
-ny <- 7 # size of space in the y dimension
+nx <- 10 # size of space in the x dimension
+ny <- 10 # size of space in the y dimension
 
-nsteps <- 5000 # timesteps
+nsteps <- 3000 # timesteps
 
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
-v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
-v_thetas <- seq(from=0.01,to=10,length.out=10) # values the scale parameter can take
-alpha_start <- 2 # index (in v_alphas) of shape parameter initial value
-theta_start <- 2 # index in (v_thetas) of scale parameter initial value
+# v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
+# v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
+v_alphas <- seq(from=1.5,to=2.5,length.out=5) # values the shape parameter can take
+v_thetas <- seq(from=0.25,to=1.25,length.out=5) # values the scale parameter can take
 
 # plasticity parameter currently doesn't affect anything or evolve
 v_p <- seq(from=0,to=0.9,length.out=2) # values the plasticity parameter can take
@@ -124,52 +136,44 @@ mu <- 0.01 # mutation frequency
 n_bad <- 0*round(nx*ny/4)
 n_good <- 0*round(nx*ny/4)
 b_bad <- 2
-b_neutral <- 3
+b_neutral <- 5
 b_good <- 18
 b <- matrix(b_neutral, nrow=ny,ncol=nx)
-b[sample(nx*ny,n_bad+n_good)] <- c(rep(b_bad,n_bad),rep(b_good,n_good))
+# b[1:3,1:3] <- b_good
+# b[8:10,8:10] <- b_good
+#b[sample(nx*ny,n_bad+n_good)] <- c(rep(b_bad,n_bad),rep(b_good,n_good))
 
 # habitat quality (as represented by carrying capacity)
-K <- matrix(0, nrow=ny,ncol=nx)
-K[,c(1,2,3,11,12,13)] <- 3
+K <- matrix(10, nrow=ny,ncol=nx)
+# K[1:3,1:3] <- 20
+# K[8:10,8:10] <- 20
 
 sims <- data.frame()
 # original param set
-sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=5))
-# different starting spots
-sims <- rbind(sims,data.frame(alpha_start=5,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=5))
-sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=5,theta_from=0.1, theta_to=5,theta_nout=5))
-sims <- rbind(sims,data.frame(alpha_start=5,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=5,theta_from=0.1, theta_to=5,theta_nout=5))
-# keep theta constant
-sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=5,alpha_nout=5,theta_start=1,theta_from=0.1, theta_to=0.1,theta_nout=2))
-# keep alpha constant
-sims <- rbind(sims,data.frame(alpha_start=1,alpha_from=0.1,alpha_to=0.1,alpha_nout=2,theta_start=1,theta_from=0.1, theta_to=5,theta_nout=5))
-colnames(sims)=c('alpha_start','alpha_from','alpha_to','alpha_nout','theta_start','theta_from','theta_to','theta_nout')
-sims$sim_num <- 1:nrow(sims)
-
+sims <- expand.grid(alpha_start=1:length(v_alphas),theta_start=1:length(v_thetas)) %>%
+  mutate(sim_num=row_number())
 
 df_out <- data.frame(t=NA,alpha=NA,theta=NA,popsize=NA,sim_num=NA)
 for(i in 1:nrow(sims)){
-  v_alphas <- seq(from=sims$alpha_from[i],to=sims$alpha_to[i],length.out=sims$alpha_nout[i])
-  v_thetas <- seq(from=sims$theta_from[i],to=sims$theta_to[i],length.out=sims$theta_nout[i])
-  
-  matrix_out <- f_RunMatrixSim(nx,ny,nsteps,v_alphas,v_thetas,v_p,sims$alpha_start[i],sims$theta_start[i],p_start,mu,b,K,heatmap_plot_int=nsteps)[[2]] %>%
+  print(i)
+  matrix_out <- f_RunMatrixSimFlat(nx,ny,nsteps,v_alphas,v_thetas,v_p,
+                                   sims$alpha_start[i],sims$theta_start[i],p_start,mu,b,b_bad,b_neutral,b_good,K)$by_t %>%
     mutate(sim_num=sims$sim_num[i])
-  
   df_out <- rbind(df_out,matrix_out)
 }
 
-df_out <- filter(df_out,!is.na(sim_num)) %>%
+df_out <- filter(df_out,!is.na(sim_num),popsize>0) %>%
   arrange(t) %>%
   mutate(sim_num=as.factor(sim_num))
 lasts <- group_by(df_out,sim_num)%>%
-  summarize(alpha=last(alpha),theta=last(theta))
+  summarize(alpha=last(alpha),theta=last(theta),t=last(t))
 ggplot(df_out,aes(x=alpha,y=theta,color=sim_num))+
     geom_path(lwd=0.25)+
-  geom_point(data=lasts,aes(x=alpha,y=theta,color=sim_num))+
+  geom_point(data=lasts,aes(x=alpha,y=theta,color=sim_num,fill=(t==nsteps)),pch=21,size=3)+
+  scale_fill_manual(name='population persistence', values=c('black','white'))+ # ones filled in black died out before the end of the simulation
     theme_minimal()
-
-f_PlotOutput(filter(df_out,sim_num==1),kern_timesteps=800:1000,kern_xlim=5)
+#save(df_out,sims,file='model_runs/20251031_4.RData')
+#f_PlotOutput(filter(df_out,sim_num==2),kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25),kern_xlim=5)
 ```
 ## IBM
 ```{r}

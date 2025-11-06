@@ -4,8 +4,11 @@
 #   patch_locations for mapmaking
 #   plot_int to specify time intervals to plot
 f_PlotAllHeatmapsIBM <- function(pop,patch_locations,plot_int=NA){
-  if(is.na(plot_int)) plot_int <- round(max(pop$t)/10) # set the plotting interval, unless specified
-  plot_ints <- seq(from=plot_int,to=max(pop$t),by=plot_int)
+  if(prod(is.na(plot_int))==1){
+    plot_int <- round(max(sim_melt$t)/10) # set the plotting interval, unless specified
+    plot_ints <- seq(from=plot_int,to=max(sim_melt$t),by=plot_int)
+  } 
+  else plot_ints <- plot_int
   
   by_patch <- pop %>%
     filter(t %in% plot_ints) %>%
@@ -47,7 +50,8 @@ f_PlotAllHeatmapsIBM <- function(pop,patch_locations,plot_int=NA){
       coord_fixed()+
       scale_y_reverse()
     
-    grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
+    #grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
+    grid.arrange(arrangeGrob(plot_alpha,top="alpha"), arrangeGrob(plot_theta,top="theta"), ncol=2,top=paste0('t = ',t_i))
   }  
 }
 
@@ -227,7 +231,8 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA){
       coord_fixed()+
       scale_y_reverse()
     
-    grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
+    #grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
+    grid.arrange(plot_alpha, plot_theta,ncol=2,top=paste0('t = ',t_i))
   }
 }
 
@@ -328,11 +333,11 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25){
   grid.arrange(p0,p1,p2,p3,nrow=1)
 }
 
-f_plot_gamma <- function(alpha,theta,kern_xlim=10){
+f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){
   g <- ggplot()+
     xlim(0,kern_xlim)+
     geom_function(fun=dgamma, args=list(shape=alpha,scale=theta))+
-    labs(title=paste('alpha =',alpha,', theta =',theta))
+    labs(title=paste('alpha =',round(alpha,3),', theta =',round(theta,3)))
   
   print(g)
 }

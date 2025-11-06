@@ -46,7 +46,7 @@ mu <- 0.01 # mutation frequency
 n_bad <- 0*round(nx*ny/4)
 n_good <- 0*round(nx*ny/4)
 b_bad <- 2
-b_neutral <- 150
+b_neutral <- 10
 b_good <- 18
 b <- matrix(b_neutral, nrow=ny,ncol=nx)
 #b[sample(nx*ny,n_bad+n_good)] <- c(rep(b_bad,n_bad),rep(b_good,n_good))
@@ -60,8 +60,7 @@ K[1:3,1:3] <- 10
 K[8:10,8:10] <- 10
 
   
-# K <- data.frame(site=1:(nx*ny),K_i=5)
-# K$K_i[sample(nx*ny,n_bad)] <- 1
+pars_save <- list(nx=nx,ny=ny,nsteps=nsteps,v_alphas=v_alphas,alpha_start=alpha_start,v_thetas=v_thetas,theta_start=theta_start,v_p=v_p,p_start=p_start,mu=mu,b=b,b_bad=b_bad,b_neutral=b_neutral,b_good=b_good,K=K)
 ```
 
 # Matrix (flat)
@@ -69,9 +68,13 @@ K[8:10,8:10] <- 10
 ```{r}
 clumpy_K_out <- f_RunMatrixSimFlat(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,plot_kernel_dynamic=FALSE)
 
+#save(clumpy_K_out,pars_save,file='model_runs/20251106/matrix_largeK.RData')
+load('model_runs/20251106/matrix_smallK.RData')
+list2env(pars_save,envir=environment())
+
 f_PlotOutput(clumpy_K_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
 summarize(filter(clumpy_K_out$by_t,t>=0.75*nsteps),med_alpha=median(alpha),med_theta=median(theta))
-f_PlotAllHeatmaps(clumpy_K_out$sim_melt,clumpy_K_out$patch_locations)
+f_PlotAllHeatmaps(clumpy_K_out$sim_melt,clumpy_K_out$patch_locations, plot_int=nsteps)
 
 big_K <- c(1:3,11:13,21:23,78:80,88:90,98:100)
 small_K <- which(!(1:100 %in% big_K))
@@ -83,19 +86,23 @@ all_patch <- clumpy_K_out$sim_melt %>%
   summarize(alpha=sum(popsize*alpha_value)/sum(popsize),theta=sum(popsize*theta_value)/sum(popsize)) %>%
   group_by(K_big) %>%
   summarize(alpha=median(alpha),theta=median(theta))
-f_plot_gamma(all_patch$alpha[2],all_patch$theta[2],kern_xlim = 25)
-f_plot_gamma(all_patch$alpha[1],all_patch$theta[1],kern_xlim = 25)
 
+g_bigK <- f_plot_gamma(all_patch$alpha[2],all_patch$theta[2],kern_xlim = 25)
+g_smallK <- f_plot_gamma(all_patch$alpha[1],all_patch$theta[1],kern_xlim = 25)
+grid.arrange(arrangeGrob(g_bigK,top='Large K patches'),arrangeGrob(g_smallK,top='Small K patches'),nrow=2)
+#350x600
 ```
 
 # IBM
 
 ```{r}
 IBM_out <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,heatmap_plot_int = 500)
-#save(IBM_out,K,file='model_runs/20251106_2.RData')
+#save(IBM_out,pars_save,file='model_runs/20251106/IBM_smallK_2_wparams.RData')
+load('model_runs/20251106/IBM_largeK.RData')
+list2env(pars_save,envir=globalenv())
 
 f_PlotOutput(IBM_out[[2]], kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
-f_PlotAllHeatmapsIBM(IBM_out[[1]],IBM_out[[3]])
+f_PlotAllHeatmapsIBM(IBM_out[[1]],IBM_out[[3]],plot_int=nsteps)
 
 big_K <- c(1:3,11:13,21:23,78:80,88:90,98:100)
 small_K <- which(!(1:100 %in% big_K))
@@ -106,8 +113,10 @@ all_patch <- IBM_out[[1]] %>%
 med_bigK <- list(alpha=median(filter(all_patch,K_big==TRUE)$alpha_value),theta=median(filter(all_patch,K_big==TRUE)$theta_value))
 med_smallK <- list(alpha=median(filter(all_patch,K_big==FALSE)$alpha_value),theta=median(filter(all_patch,K_big==FALSE)$theta_value))
 
-f_plot_gamma(med_bigK$alpha,med_bigK$theta,kern_xlim = 25)
-f_plot_gamma(med_smallK$alpha,med_smallK$theta,kern_xlim = 25)
+g_bigK <- f_plot_gamma(med_bigK$alpha,med_bigK$theta,kern_xlim = 25)
+g_smallK <- f_plot_gamma(med_smallK$alpha,med_smallK$theta,kern_xlim = 25)
+grid.arrange(arrangeGrob(g_bigK,top='Large K patches'),arrangeGrob(g_smallK,top='Small K patches'),nrow=2)
+#350x600
 ```
 
 ## old stuff

@@ -69,26 +69,49 @@ pars_save <- list(nx=nx,ny=ny,nsteps=nsteps,v_alphas=v_alphas,alpha_start=alpha_
 clumpy_K_out <- f_RunMatrixSimFlat(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,plot_kernel_dynamic=FALSE)
 
 #save(clumpy_K_out,pars_save,file='model_runs/20251106/matrix_largeK.RData')
-load('model_runs/20251106/matrix_smallK.RData')
+load('model_runs/20251106/matrix_largeK.RData')
 list2env(pars_save,envir=environment())
 
 f_PlotOutput(clumpy_K_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
 summarize(filter(clumpy_K_out$by_t,t>=0.75*nsteps),med_alpha=median(alpha),med_theta=median(theta))
 f_PlotAllHeatmaps(clumpy_K_out$sim_melt,clumpy_K_out$patch_locations, plot_int=nsteps)
 
-big_K <- c(1:3,11:13,21:23,78:80,88:90,98:100)
-small_K <- which(!(1:100 %in% big_K))
-
+big_K <- which(K==max(K))
+#big_K <- c(8:10,18:20,28:30,71:73,81:83,91:93)
+small_K <- which(!(1:length(K) %in% big_K))
 all_patch <- clumpy_K_out$sim_melt %>%
   mutate(K_big=patch %in% big_K) %>%
-  filter(t>2000) %>%
+  filter(t>2000) 
+samps_to_plot <- 500
+bigK <- filter(all_patch,K_big==TRUE)
+big_sample_inds=sample(1:nrow(bigK),samps_to_plot,prob=bigK$popsize)
+smallK <- filter(all_patch,K_big==FALSE)
+small_sample_inds=sample(1:nrow(smallK),samps_to_plot,prob=smallK$popsize)
+avg_kern_params <- all_patch %>%
   group_by(K_big,t) %>%
   summarize(alpha=sum(popsize*alpha_value)/sum(popsize),theta=sum(popsize*theta_value)/sum(popsize)) %>%
   group_by(K_big) %>%
   summarize(alpha=median(alpha),theta=median(theta))
 
-g_bigK <- f_plot_gamma(all_patch$alpha[2],all_patch$theta[2],kern_xlim = 25)
-g_smallK <- f_plot_gamma(all_patch$alpha[1],all_patch$theta[1],kern_xlim = 25)
+g_bigK <- ggplot()+
+  xlim(0,25)+
+  lapply(1:samps_to_plot, function(i){
+    geom_function(fun=dgamma,args=list(shape=bigK$alpha_value[big_sample_inds[i]],scale=bigK$theta_value[big_sample_inds[i]]),color='darkgray',alpha=0.2,lwd=0.5)
+    })+
+  geom_function(fun=dgamma, args=list(shape=filter(avg_kern_params,K_big==TRUE)$alpha,scale=filter(avg_kern_params,K_big==TRUE)$theta))+
+  theme_minimal()+
+  labs(title=paste0('alpha=',round(filter(avg_kern_params,K_big==TRUE)$alpha,3),', theta=',round(filter(avg_kern_params,K_big==TRUE)$theta,3)))
+g_smallK <- ggplot()+
+  xlim(0,25)+
+  lapply(1:samps_to_plot, function(i){
+    geom_function(fun=dgamma,args=list(shape=smallK$alpha_value[small_sample_inds[i]],scale=smallK$theta_value[small_sample_inds[i]]),color='darkgray',alpha=0.2,lwd=0.5)
+    })+
+  geom_function(fun=dgamma, args=list(shape=filter(avg_kern_params,K_big==FALSE)$alpha,scale=filter(avg_kern_params,K_big==FALSE)$theta))+
+  theme_minimal()+
+  labs(title=paste0('alpha=',round(filter(avg_kern_params,K_big==FALSE)$alpha,3),', theta=',round(filter(avg_kern_params,K_big==FALSE)$theta,3)))
+
+# g_bigK <- f_plot_gamma(all_patch$alpha[2],all_patch$theta[2],kern_xlim = 25)
+# g_smallK <- f_plot_gamma(all_patch$alpha[1],all_patch$theta[1],kern_xlim = 25)
 grid.arrange(arrangeGrob(g_bigK,top='Large K patches'),arrangeGrob(g_smallK,top='Small K patches'),nrow=2)
 #350x600
 ```
@@ -110,13 +133,36 @@ small_K <- which(!(1:100 %in% big_K))
 all_patch <- IBM_out[[1]] %>%
   mutate(K_big=dest_site %in% big_K) %>%
   filter(t>2000)
-med_bigK <- list(alpha=median(filter(all_patch,K_big==TRUE)$alpha_value),theta=median(filter(all_patch,K_big==TRUE)$theta_value))
-med_smallK <- list(alpha=median(filter(all_patch,K_big==FALSE)$alpha_value),theta=median(filter(all_patch,K_big==FALSE)$theta_value))
 
-g_bigK <- f_plot_gamma(med_bigK$alpha,med_bigK$theta,kern_xlim = 25)
-g_smallK <- f_plot_gamma(med_smallK$alpha,med_smallK$theta,kern_xlim = 25)
+samps_to_plot <- 300
+bigK <- filter(all_patch,K_big==TRUE)
+big_sample_inds=sample(1:nrow(bigK),samps_to_plot)
+smallK <- filter(all_patch,K_big==FALSE)
+small_sample_inds=sample(1:nrow(smallK),samps_to_plot)
+
+g_bigK <- ggplot()+
+  xlim(0,25)+
+  lapply(1:samps_to_plot, function(i){
+    geom_function(fun=dgamma,args=list(shape=bigK$alpha_value[big_sample_inds[i]],scale=bigK$theta_value[big_sample_inds[i]]),color='darkgray',alpha=0.2,lwd=0.25)
+    })+
+  geom_function(fun=dgamma, args=list(shape=mean(bigK$alpha_value),scale=mean(bigK$theta_value)))+
+  theme_minimal()
+
+g_smallK <- ggplot()+
+  xlim(0,25)+
+  lapply(1:samps_to_plot, function(i){
+    geom_function(fun=dgamma,args=list(shape=smallK$alpha_value[small_sample_inds[i]],scale=smallK$theta_value[small_sample_inds[i]]),color='darkgray',alpha=0.2,lwd=0.25)
+    })+
+  geom_function(fun=dgamma, args=list(shape=mean(smallK$alpha_value),scale=mean(smallK$theta_value)))+
+  theme_minimal()
+# 
+# med_bigK <- list(alpha=mean(filter(all_patch,K_big==TRUE)$alpha_value),theta=mean(filter(all_patch,K_big==TRUE)$theta_value))
+# med_smallK <- list(alpha=mean(filter(all_patch,K_big==FALSE)$alpha_value),theta=mean(filter(all_patch,K_big==FALSE)$theta_value))
+# 
+# g_bigK <- f_plot_gamma(med_bigK$alpha,med_bigK$theta,kern_xlim = 25)
+# g_smallK <- f_plot_gamma(med_smallK$alpha,med_smallK$theta,kern_xlim = 25)
 grid.arrange(arrangeGrob(g_bigK,top='Large K patches'),arrangeGrob(g_smallK,top='Small K patches'),nrow=2)
-#350x600
+#400x600
 ```
 
 ## old stuff

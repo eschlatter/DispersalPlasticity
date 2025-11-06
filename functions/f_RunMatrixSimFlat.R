@@ -130,31 +130,33 @@ f_RunMatrixSimFlat <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,th
     }
     
     if(plot_kernel_dynamic==TRUE & t %% round(nsteps/100) == 0){
-      # histogram of kernel means (alpha*theta)
-      thisstep <- cbind(Pij[,t],matrix_index) %>%
-        rename(popsize=paste0('Pij[, t]')) %>%
-        filter(popsize>0) %>%
-        mutate(kern_mean=v_alphas[alpha]*v_thetas[theta],
-               kern_mode=ifelse(v_alphas[alpha]<1,0,(v_alphas[alpha]-1)*v_thetas[theta]))
-      break_vec <- seq(from=0,to=1,length.out=50)
-      #break_vec <- seq(from=min(thisstep$kern_mode),to=max(thisstep$kern_mode),length.out=20)
-      break_inds <- data.frame(kern_mode_bin=1:length(break_vec),l_end=break_vec,r_end=lead(break_vec))[1:19,]
-      thisstep <- mutate(thisstep, kern_mode_bin = cut(kern_mode,breaks=break_vec, include.lowest=TRUE,labels=FALSE)) %>%
-        group_by(kern_mode_bin) %>%
-        summarize(popsize=sum(popsize))%>%
-        right_join(break_inds,by='kern_mode_bin')
-      thisstep$popsize[is.na(thisstep$popsize)] <- 0
-      
-      mode_ticks <- expand.grid(alpha=v_alphas,theta=v_thetas) %>%
-        mutate(mode=ifelse(alpha<1,0,(alpha-1)*theta))
-      
-      g <- ggplot(thisstep,aes(x=l_end,y=popsize))+
-        geom_bar(stat='identity')+
-        labs(x='kernel mode',title=paste("t =", t))+
-        geom_point(data=filter(mode_ticks,mode<=max(break_vec)),aes(x=mode),y=0)+
-        xlim(-.04,max(break_vec))+
-        ylim(0,sum(K))
-      print(g)
+      if(sum(Pij[,t],na.rm=TRUE)>0){
+        # histogram of kernel means (alpha*theta)
+        thisstep <- cbind(Pij[,t],matrix_index) %>%
+          rename(popsize=paste0('Pij[, t]')) %>%
+          filter(popsize>0) %>%
+          mutate(kern_mean=v_alphas[alpha]*v_thetas[theta],
+                 kern_mode=ifelse(v_alphas[alpha]<1,0,(v_alphas[alpha]-1)*v_thetas[theta]))
+        break_vec <- seq(from=0,to=1,length.out=50)
+        #break_vec <- seq(from=min(thisstep$kern_mode),to=max(thisstep$kern_mode),length.out=20)
+        break_inds <- data.frame(kern_mode_bin=1:length(break_vec),l_end=break_vec,r_end=lead(break_vec))[1:19,]
+        thisstep <- mutate(thisstep, kern_mode_bin = cut(kern_mode,breaks=break_vec, include.lowest=TRUE,labels=FALSE)) %>%
+          group_by(kern_mode_bin) %>%
+          summarize(popsize=sum(popsize))%>%
+          right_join(break_inds,by='kern_mode_bin')
+        thisstep$popsize[is.na(thisstep$popsize)] <- 0
+        
+        mode_ticks <- expand.grid(alpha=v_alphas,theta=v_thetas) %>%
+          mutate(mode=ifelse(alpha<1,0,(alpha-1)*theta))
+        
+        g <- ggplot(thisstep,aes(x=l_end,y=popsize))+
+          geom_bar(stat='identity')+
+          labs(x='kernel mode',title=paste("t =", t))+
+          geom_point(data=filter(mode_ticks,mode<=max(break_vec)),aes(x=mode),y=0)+
+          xlim(-.04,max(break_vec))+
+          ylim(0,sum(K))
+        print(g)
+      } else print(paste("t=",t,': pop=0'))
     }
     
     if(t %% round(nsteps/10) == 0) print(t)

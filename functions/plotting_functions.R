@@ -182,7 +182,7 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA){
     summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha
     group_by(patch,t) %>%
     summarize(theta_m=sum(theta*popsize)/sum(popsize),
-              theta_v=sum(popsize*(theta-theta_m)^2)/sum(popsize),,
+              theta_v=sum(popsize*(theta-theta_m)^2)/sum(popsize),
               .groups='drop') %>%
     left_join(patch_locations,by=c("patch" = "id"))
   

@@ -120,19 +120,19 @@ grid.arrange(arrangeGrob(g_bigK,top='Large K patches'),arrangeGrob(g_smallK,top=
 
 ```{r}
 IBM_out <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,heatmap_plot_int = 500)
-#save(IBM_out,pars_save,file='model_runs/20251106/IBM_smallK_2_wparams.RData')
-load('model_runs/20251106/IBM_largeK.RData')
-list2env(pars_save,envir=globalenv())
+# save(IBM_out,pars_save,file='model_runs/20251107_1.RData')
+# load('model_runs/20251106/IBM_smallK.RData')
+# list2env(pars_save,envir=globalenv())
 
 f_PlotOutput(IBM_out[[2]], kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
 f_PlotAllHeatmapsIBM(IBM_out[[1]],IBM_out[[3]],plot_int=nsteps)
 
-big_K <- c(1:3,11:13,21:23,78:80,88:90,98:100)
+big_K <- which(K==max(K))
 small_K <- which(!(1:100 %in% big_K))
 
 all_patch <- IBM_out[[1]] %>%
   mutate(K_big=dest_site %in% big_K) %>%
-  filter(t>2000)
+  filter(t>(2/3)*nsteps)
 
 samps_to_plot <- 300
 bigK <- filter(all_patch,K_big==TRUE)

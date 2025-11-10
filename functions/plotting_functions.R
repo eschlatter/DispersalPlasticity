@@ -5,8 +5,8 @@
 #   plot_int to specify time intervals to plot
 f_PlotAllHeatmapsIBM <- function(pop,patch_locations,plot_int=NA){
   if(prod(is.na(plot_int))==1){
-    plot_int <- round(max(sim_melt$t)/10) # set the plotting interval, unless specified
-    plot_ints <- seq(from=plot_int,to=max(sim_melt$t),by=plot_int)
+    plot_int <- round(max(pop$t)/10) # set the plotting interval, unless specified
+    plot_ints <- seq(from=plot_int,to=max(pop$t),by=plot_int)
   } 
   else plot_ints <- plot_int
   

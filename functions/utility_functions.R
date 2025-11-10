@@ -13,6 +13,15 @@ f_plasticity <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_goo
   return(list(alpha_plastic=alpha_plastic, theta_plastic=theta_plastic))
 }
 
+f_plasticity2 <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_good=9, n_alpha=5, n_theta=5){
+  if(b_good!=b_neutral){ # check for the possibility that there isn't variation in b. Assuming there is:
+    alpha_add <- round((b_neutral-b_i)/(b_good-b_neutral))} # calculate what to add to the alpha index, based on plasticity. It's -1, 0, or +1.
+  else alpha_add <- 0
+  alpha_plastic <- oob_squish(alpha_i+round(p_i)*alpha_add, c(1,n_alpha))
+  theta_plastic <- theta_i
+  return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
+}
+
 f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas){
   # list of patch locations and IDs
   # (dimensions npatch x 3)

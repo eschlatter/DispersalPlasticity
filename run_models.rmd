@@ -24,16 +24,16 @@ source('functions/utility_functions.R')
 # Parameters
 
 ```{r}
-nx <- 10 # size of space in the x dimension
-ny <- 10 # size of space in the y dimension
+nx <- 30 # size of space in the x dimension
+ny <- 30 # size of space in the y dimension
 
 nsteps <- 3000 # timesteps
 
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
 v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
-alpha_start <- 3 # index (in v_alphas) of shape parameter initial value
-theta_start <- 3 # index in (v_thetas) of scale parameter initial value
+alpha_start <- 1 # index (in v_alphas) of shape parameter initial value
+theta_start <- 1 # index in (v_thetas) of scale parameter initial value
 
 # plasticity parameter currently doesn't affect anything or evolve
 v_p <- seq(from=0,to=0.9,length.out=2) # values the plasticity parameter can take
@@ -53,17 +53,28 @@ b <- matrix(b_neutral, nrow=ny,ncol=nx)
 
 # habitat quality (as represented by carrying capacity)
 n_good <- .5*nx*ny
-K <- matrix(5, nrow=ny,ncol=nx)
+K <- matrix(10, nrow=ny,ncol=nx)
 #K[sample(nx*ny,n_good)] <- 10
 #K[,c(1,2,3,11,12,13)] <- 3
-K[1:3,1:3] <- 10
-K[8:10,8:10] <- 10
+# K[1:3,1:3] <- 10
+# K[8:10,8:10] <- 10
 
   
 pars_save <- list(nx=nx,ny=ny,nsteps=nsteps,v_alphas=v_alphas,alpha_start=alpha_start,v_thetas=v_thetas,theta_start=theta_start,v_p=v_p,p_start=p_start,mu=mu,b=b,b_bad=b_bad,b_neutral=b_neutral,b_good=b_good,K=K)
 ```
 
 # Matrix (flat)
+
+```{r}
+orig_out <- f_RunMatrixSimFlat(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,plot_kernel_dynamic=FALSE)
+f_PlotOutput(orig_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+```
+
+```{r}
+sparse_out <- f_RunMatrixSimSparse(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,plot_kernel_dynamic=FALSE)
+f_PlotOutput(sparse_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+```
+
 
 ```{r}
 clumpy_K_out <- f_RunMatrixSimFlat(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,plot_kernel_dynamic=FALSE)
@@ -146,7 +157,8 @@ g_bigK <- ggplot()+
     geom_function(fun=dgamma,args=list(shape=bigK$alpha_value[big_sample_inds[i]],scale=bigK$theta_value[big_sample_inds[i]]),color='darkgray',alpha=0.2,lwd=0.25)
     })+
   geom_function(fun=dgamma, args=list(shape=mean(bigK$alpha_value),scale=mean(bigK$theta_value)))+
-  theme_minimal()
+  theme_minimal()+
+  labs(title=paste0('alpha=',round(mean(bigK$alpha_value),3),', theta=',round(mean(bigK$theta_value),3)))
 
 g_smallK <- ggplot()+
   xlim(0,25)+
@@ -154,7 +166,8 @@ g_smallK <- ggplot()+
     geom_function(fun=dgamma,args=list(shape=smallK$alpha_value[small_sample_inds[i]],scale=smallK$theta_value[small_sample_inds[i]]),color='darkgray',alpha=0.2,lwd=0.25)
     })+
   geom_function(fun=dgamma, args=list(shape=mean(smallK$alpha_value),scale=mean(smallK$theta_value)))+
-  theme_minimal()
+  theme_minimal()+
+  labs(title=paste0('alpha=',round(mean(smallK$alpha_value),3),', theta=',round(mean(smallK$theta_value),3)))
 # 
 # med_bigK <- list(alpha=mean(filter(all_patch,K_big==TRUE)$alpha_value),theta=mean(filter(all_patch,K_big==TRUE)$theta_value))
 # med_smallK <- list(alpha=mean(filter(all_patch,K_big==FALSE)$alpha_value),theta=mean(filter(all_patch,K_big==FALSE)$theta_value))
@@ -164,6 +177,13 @@ g_smallK <- ggplot()+
 grid.arrange(arrangeGrob(g_bigK,top='Large K patches'),arrangeGrob(g_smallK,top='Small K patches'),nrow=2)
 #400x600
 ```
+
+```{r}
+IBM_out <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,heatmap_plot_int = 500)
+f_PlotOutput(IBM_out[[2]], kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+f_PlotAllHeatmapsIBM(IBM_out[[1]],IBM_out[[3]])
+```
+
 
 ## old stuff
 

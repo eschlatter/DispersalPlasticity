@@ -53,7 +53,6 @@ f_RunIBM <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,
       b_i <- patch_locations$b_i[larvae$origin_site[i]] # habitat quality (b) in larva's origin patch. Maybe at this point it makes sense to just add this as a column.
       eff_params <- f_plasticity(b_i,larvae$p[i],larvae$alpha[i],larvae$theta[i],b_bad,b_neutral,b_good,length(v_alphas),length(v_thetas))
       dests <- conn_matrices[eff_params[[1]], eff_params[[2]], larvae$origin_site[i], ]
-      larvae$dest_site[i] <- sample(1:npatch,size=1,prob=dests)
       larvae$dest_site[i] <- sample(1:(npatch+1),size=1,prob=c(dests,1-sum(dests)))
     } # i
     larvae <- filter(larvae,!dest_site==(npatch+1)) # remove the ones who didn't land in a patch

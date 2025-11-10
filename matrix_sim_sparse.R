@@ -1,4 +1,4 @@
-f_RunMatrixSimFlat <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,plot_kernel_dynamic=FALSE){
+f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,plot_kernel_dynamic=FALSE){
   starttime <- proc.time()
   
   ########## Data structures to describe space and dispersal ##########
@@ -41,66 +41,82 @@ f_RunMatrixSimFlat <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,th
   # first find all the nonzero indices of Tij to help with sparse matrix construction
   g11 <- expand.grid(i=1:npatch,j=1:npatch) # indices of group 1
   
-  # initialize it
-  Tij <- matrix(0,nrow=nrow(matrix_index),ncol=nrow(matrix_index))
-  #Tij <- sparseMatrix(i=c(1),j=c(1),x=c(0),dims=c(nrow(matrix_index),nrow(matrix_index)))
+  # mutation options
+  alpha_adds=c(0,1,-1,0,0)
+  theta_adds=c(0,0,0,1,-1)
+  p_adds=c(0,0,0,0,0)
   
+  # mutation_destinations: a matrix of what parameter groups can be the endpoint of mutation from each group
+  f_mut_finder <- function(grp,mut_num){
+    a <- which(group_index$alpha==group_index$alpha[grp]+alpha_adds[mut_num] & 
+                 group_index$theta==group_index$theta[grp]+theta_adds[mut_num] & 
+                 group_index$p==group_index$p[grp]+p_adds[mut_num])
+    return(ifelse(length(a)!=0,a,grp))
+  }  
+  
+  mutation_destinations <- matrix(nrow=nrow(group_index),ncol=length(alpha_adds))
+  #mutation_destinations=data.frame(i=integer(),j=integer())
+  for(mut_num in 1:length(alpha_adds)){
+    # mutation_destinations <- rbind(mutation_destinations,data.frame(i=1:nrow(group_index),
+    #                                                                 j=sapply(1:nrow(group_index),f_mut_finder,mut_num=mut_num)))
+    mutation_destinations[,mut_num] <- sapply(1:nrow(group_index),f_mut_finder,mut_num=mut_num)
+  }
+  # make a longer version to use when generating nonzeros
+  df_mutation_destinations <- data.frame(mutation_destinations) %>%
+    rownames_to_column(var="group_origin") %>%
+    pivot_longer(cols=c(-group_origin),values_to="group_dest") %>%
+    dplyr::select(-name) %>%
+    mutate(group_origin=as.integer(group_origin)) %>%
+    distinct()  
+  
+  # use df_mutation_destinations to find all the nonzero indices of the transition matrix
+  nonzeros=list()
+  for(r_i in 1:nrow(df_mutation_destinations)){
+    # group r_i to group r_j
+    temp_df <- data.frame(i = g11$i+(df_mutation_destinations$group_origin[r_i]-1)*npatch, j = g11$j+(df_mutation_destinations$group_dest[r_i]-1)*npatch)
+    nonzeros <- append(nonzeros,list(temp_df))
+  }
+  nonzeros <- bind_rows(nonzeros)
+  
+  # initialize Tij
+  Tij <- sparseMatrix(i=nonzeros$i,j=nonzeros$j,x=0,dims=c(nrow(matrix_index),nrow(matrix_index)))
+  rm(nonzeros)
+  
+  # fill up Tij
   # do the following for every combination of parameters (i.e., "group")
   for(group_row in 1:nrow(group_index)){
     v <- group_index[group_row,] # get parameter values for that row
-    
+
     # make the patch-wise connectivity matrix
     # build it one row at a time because each row represents a different origin patch
     # origin patches may have different patch qualities, and therefore different dispersal kernels
     patchwise_cmat <- matrix(0,nrow=npatch,ncol=npatch)
+    # get the effective kernel parameters, given any plastic response to origin patch quality
+    eff_params <- f_plasticity2(as.vector(b),v_p[v$p],v$alpha,v$theta,b_bad,b_neutral,b_good,n_alpha=length(v_alphas),n_theta = length(v_thetas))
     for(patch_i in 1:npatch){
-      # get the patch quality for the current origin patch
-      b_i <- b[patch_i]
-      # get the effective kernel parameters, given any plastic response to origin patch quality
-      eff_params <- f_plasticity(b_i,v_p[v$p],v$alpha,v$theta,b_bad,b_neutral,b_good,n_alpha=length(v_alphas),n_theta = length(v_thetas))
       # dispersal frequency matrix from the origin patch to everywhere
-      cmat <- conn_matrices[eff_params$alpha_plastic,eff_params$theta_plastic,,patch_i]
+      cmat <- conn_matrices[eff_params$alpha_plastic[patch_i],eff_params$theta_plastic[patch_i],,patch_i]
       # multiply by b_i to get number of larvae (per adult in origin patch) dispersing from origin patch to everywhere
-      patchwise_cmat[patch_i,] <- b_i*cmat
+      patchwise_cmat[patch_i,] <- b[patch_i]*cmat
     }
-    
-    # #### remove this later! Testing if rounding makes a difference.
-    # patchwise_cmat <- signif(patchwise_cmat,digits=6)
-    
+ 
     # distribute the larvae among their new parameter values (with mutation):
     # place patchwise_cmat multiplied by (1-mu) into Tij for the current parameter group,
     # and (multiplied by mu/4) for the parameter group of each mutation possibility
-    Tij_group_inds <- which(matrix_index$alpha==v$alpha & matrix_index$theta==v$theta & matrix_index$p==v$p) # indices in Tij for that parameter group
+    #Tij_group_inds <- which(matrix_index$alpha==v$alpha & matrix_index$theta==v$theta & matrix_index$p==v$p) # indices in Tij for that parameter group
+    Tij_group_inds <- (1:npatch)+npatch*(group_row-1)
     
     # no mutation
     Tij[Tij_group_inds,Tij_group_inds] <- (1-mu)*patchwise_cmat
-    
-    # mutation
-    alpha_adds=c(1,-1,0,0)
-    theta_adds=c(0,0,1,-1)
-    # find the parameter groups that are the endpoints of mutation
-    mutated_param_groups <- mapply(function(x1,x2) which(group_index$alpha==v$alpha+x1 & group_index$theta==v$theta+x2 & group_index$p==v$p)
-                                   ,alpha_adds,theta_adds) # (can't vectorize that which statement, so use mapply)
-    # identify mutated parameter groups that are out of bounds (i.e., a mutation that decreases alpha when alpha is already at its minimum)
-    out_of_bounds <- is.na(mutated_param_groups>0)
-    # for each parameter group that's out of bounds, we'll add those who would have undergone that mutation back to the original parameter group
-    Tij[Tij_group_inds,Tij_group_inds] <- Tij[Tij_group_inds,Tij_group_inds]+sum(out_of_bounds)*(mu/4)*patchwise_cmat
-    # for the mutated parameter groups that are in-bounds:
-    # list of the j-indices of each of those parameter groups in Tij
-    mut_Tij_inds <- lapply(mutated_param_groups[!out_of_bounds],FUN=function(x) seq(from=((x-1)*npatch+1),to=x*npatch,by=1))
-    # store everything where it goes (this shouldn't be a for loop. But it is for now because I'm less likely to make a mistake.)
-    for(mut_group in 1:length(mut_Tij_inds)){
-      Tij[Tij_group_inds,mut_Tij_inds[[mut_group]]] <- (mu/4)*patchwise_cmat
+
+    # with mutation
+    for(mut_group in mutation_destinations[group_row,-1]){
+      Tij[Tij_group_inds,(1:npatch)+npatch*(mut_group-1)] <- (mu/4)*patchwise_cmat + Tij[Tij_group_inds,(1:npatch)+npatch*(mut_group-1)]
     }
   }
   
-  # print("Tij finished")
-  # print(proc.time()-starttime)
-  
-  # Store Tij as a sparse matrix, since it's got tons of zeroes
-  # (Can I just build it as sparse to begin with, and avoid using all the memory to create Tij? Probably. Look into this.)
-  Tij_sparse <- as(Tij, "sparseMatrix")
-  rm(Tij)
+  print("Tij finished")
+  print(proc.time()-starttime)
   
   ###### 3. Pij
   # One row for each row of matrix_index and Tij (i.e. each combo of parameter values and patch); one column for each timestep. 
@@ -116,7 +132,7 @@ f_RunMatrixSimFlat <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,th
   
   for(t in 2:nsteps){
     # reproduction and dispersal and mutation
-    temp_newpop <- Pij[,t-1] %*% Tij_sparse # technically the Pij vector should be a row vector rather than a column vector, but R doesn't care
+    temp_newpop <- Pij[,t-1] %*% Tij # technically the Pij vector should be a row vector rather than a column vector, but R doesn't care
     
     ## Competition
     # if a patch has population greater than K, sample K individuals and distribute them among cells in that patch

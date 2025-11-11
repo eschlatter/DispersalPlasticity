@@ -62,31 +62,8 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
     mutation_destinations[,mut_num] <- sapply(1:nrow(group_index),f_mut_finder,mut_num=mut_num)
   }
   
-  
-  
-  
-  # # make a longer version to use when generating nonzeros
-  # df_mutation_destinations <- data.frame(mutation_destinations) %>%
-  #   rownames_to_column(var="group_origin") %>%
-  #   pivot_longer(cols=c(-group_origin),values_to="group_dest") %>%
-  #   dplyr::select(-name) %>%
-  #   mutate(group_origin=as.integer(group_origin)) %>%
-  #   distinct()  
-  # 
-  # # use df_mutation_destinations to find all the nonzero indices of the transition matrix
-  # nonzeros=list()
-  # for(r_i in 1:nrow(df_mutation_destinations)){
-  #   # group r_i to group r_j
-  #   temp_df <- data.frame(i = g11$i+(df_mutation_destinations$group_origin[r_i]-1)*npatch, j = g11$j+(df_mutation_destinations$group_dest[r_i]-1)*npatch)
-  #   nonzeros <- append(nonzeros,list(temp_df))
-  # }
-  # nonzeros <- bind_rows(nonzeros)
-  # 
-  # # initialize Tij
-  # Tij <- sparseMatrix(i=nonzeros$i,j=nonzeros$j,x=0,dims=c(nrow(matrix_index),nrow(matrix_index)))
-  # rm(nonzeros)
-  Tij_df <- data.frame(i=integer(),j=integer(),x=numeric())
-  
+  Tij_list <- list()
+
   phase1_total <- 0
   phase2_total <- 0
   # fill up Tij
@@ -114,26 +91,25 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
     # distribute the larvae among their new parameter values (with mutation):
     # place patchwise_cmat multiplied by (1-mu) into Tij for the current parameter group,
     # and (multiplied by mu/4) for the parameter group of each mutation possibility
-    #Tij_group_inds <- which(matrix_index$alpha==v$alpha & matrix_index$theta==v$theta & matrix_index$p==v$p) # indices in Tij for that parameter group
     Tij_group_inds <- (1:npatch)+npatch*(group_row-1)
     
     # no mutation
     temp_df <- expand.grid(i=Tij_group_inds,j=Tij_group_inds)
     temp_df$x <- (1-mu)*as.vector(patchwise_cmat)
-    Tij_df <- rbind(Tij_df,temp_df)
-    #Tij[Tij_group_inds,Tij_group_inds] <- (1-mu)*patchwise_cmat
+    Tij_list <- append(Tij_list,list(temp_df))
 
     # with mutation
     for(mut_group in mutation_destinations[group_row,-1]){ # for each of the 4 possible mutations
       temp_df <- expand.grid(i=Tij_group_inds,j=(1:npatch)+npatch*(mut_group-1))
       temp_df$x <- (mu/4)*as.vector(patchwise_cmat)
-      Tij_df <- rbind(Tij_df,temp_df)
-      #Tij[Tij_group_inds,(1:npatch)+npatch*(mut_group-1)] <- (mu/4)*patchwise_cmat + Tij[Tij_group_inds,(1:npatch)+npatch*(mut_group-1)]
+      Tij_list <- append(Tij_list,list(temp_df))
     }
     
     phase2_total <- (proc.time()-start_phase2) + phase2_total
   }
   
+  Tij_df <- bind_rows(Tij_list)
+  rm(Tij_list)
   Tij_df <- filter(Tij_df,x!=0)
   Tij <- sparseMatrix(i=Tij_df$i,j=Tij_df$j,x=Tij_df$x,dims=c(nrow(matrix_index),nrow(matrix_index)))
   rm(Tij_df)

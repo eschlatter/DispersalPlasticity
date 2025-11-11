@@ -24,8 +24,8 @@ source('functions/utility_functions.R')
 # Parameters
 
 ```{r}
-nx <- 30 # size of space in the x dimension
-ny <- 30 # size of space in the y dimension
+nx <- 4 # size of space in the x dimension
+ny <- 4 # size of space in the y dimension
 
 nsteps <- 3000 # timesteps
 

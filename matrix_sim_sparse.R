@@ -35,79 +35,78 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
   #   starting with the parameters in the first row of group_index (first "group") and ending with the parameters in the second row of group_index (second "group").
   group_index <- expand.grid(alpha=1:length(v_alphas),theta=1:length(v_thetas),p=1:length(v_p))
   
-  ###### 2. Tij
-  # only need to build this once at the beginning (or as often as patch-specific birth rate changes).
+  ###### 2. Tij (only need to build this once at the beginning -- or as often as patch-specific birth rate changes)
   
-  # first find all the nonzero indices of Tij to help with sparse matrix construction
-  g11 <- expand.grid(i=1:npatch,j=1:npatch) # indices of group 1
-  
-  # mutation options
+  # mutation options: each element represents a separate possibility
+  # first index represents no mutation
+  # index i represents alpha=alpha+alpha_adds[i],theta=theta+theta_adds[i],p=p+p_adds[i]
   alpha_adds=c(0,1,-1,0,0)
   theta_adds=c(0,0,0,1,-1)
   p_adds=c(0,0,0,0,0)
   
-  # mutation_destinations: a matrix of what parameter groups can be the endpoint of mutation from each group
+  # mutation_destinations: a matrix with dimensions nrow(group_index) x length(alpha_adds)
+  # for each row (parameter group), the indices of the parameter groups that could be the result of (+ or -) mutation in alpha or theta
+  # (we'll add mutation in p later)
   f_mut_finder <- function(grp,mut_num){
     a <- which(group_index$alpha==group_index$alpha[grp]+alpha_adds[mut_num] & 
                  group_index$theta==group_index$theta[grp]+theta_adds[mut_num] & 
                  group_index$p==group_index$p[grp]+p_adds[mut_num])
     return(ifelse(length(a)!=0,a,grp))
-  }  
-  
+  }
   mutation_destinations <- matrix(nrow=nrow(group_index),ncol=length(alpha_adds))
-  #mutation_destinations=data.frame(i=integer(),j=integer())
   for(mut_num in 1:length(alpha_adds)){
-    # mutation_destinations <- rbind(mutation_destinations,data.frame(i=1:nrow(group_index),
-    #                                                                 j=sapply(1:nrow(group_index),f_mut_finder,mut_num=mut_num)))
     mutation_destinations[,mut_num] <- sapply(1:nrow(group_index),f_mut_finder,mut_num=mut_num)
   }
   
-  Tij_list <- list()
-
+  # timing
   phase1_total <- 0
   phase2_total <- 0
+
   # fill up Tij
+  Tij_list <- list() # we'll add elements of Tij to a list, and then put everything in the sparse matrix at once
   # do the following for every combination of parameters (i.e., "group")
   for(group_row in 1:nrow(group_index)){
     v <- group_index[group_row,] # get parameter values for that row
 
     start_phase1 <- proc.time()
-    # make the patch-wise connectivity matrix
-    # build it one row at a time because each row represents a different origin patch
-    # origin patches may have different patch qualities, and therefore different dispersal kernels
-    patchwise_cmat <- matrix(0,nrow=npatch,ncol=npatch)
-    # get the effective kernel parameters, given any plastic response to origin patch quality
+    
+    # get effective kernel parameters, given plasticity
     eff_params <- f_plasticity2(as.vector(b),v_p[v$p],v$alpha,v$theta,b_bad,b_neutral,b_good,n_alpha=length(v_alphas),n_theta = length(v_thetas))
+    
+    # patchwise_cmat: a matrix of per-parent larval dispersal rates among patches, specific to the given parameter group
+    # build the matrix one row at a time because each row represents a different origin patch
+    # origin patches may have different patch quality, and therefore different dispersal kernels
+    cmat <- list()
     for(patch_i in 1:npatch){
       # dispersal frequency matrix from the origin patch to everywhere
-      cmat <- conn_matrices[eff_params$alpha_plastic[patch_i],eff_params$theta_plastic[patch_i],,patch_i]
-      # multiply by b_i to get number of larvae (per adult in origin patch) dispersing from origin patch to everywhere
-      patchwise_cmat[patch_i,] <- b[patch_i]*cmat
+      # multiplied by b_i to get number of larvae (per adult in origin patch) dispersing from origin patch to everywhere
+      cmat[[patch_i]] <- b[patch_i]*conn_matrices[eff_params$alpha_plastic[patch_i],eff_params$theta_plastic[patch_i],,patch_i]
     }
+    patchwise_cmat <- do.call(rbind,cmat)
+    rm(cmat)
+    
     phase1_total <- (proc.time()-start_phase1) + phase1_total
-    
-    
     start_phase2 <- proc.time()
+    
     # distribute the larvae among their new parameter values (with mutation):
     # place patchwise_cmat multiplied by (1-mu) into Tij for the current parameter group,
     # and (multiplied by mu/4) for the parameter group of each mutation possibility
     Tij_group_inds <- (1:npatch)+npatch*(group_row-1)
+    temp_df <- expand.grid(i=Tij_group_inds,j=Tij_group_inds)
+    temp_df$x <- as.vector(patchwise_cmat)
     
     # no mutation
-    temp_df <- expand.grid(i=Tij_group_inds,j=Tij_group_inds)
-    temp_df$x <- (1-mu)*as.vector(patchwise_cmat)
-    Tij_list <- append(Tij_list,list(temp_df))
+    Tij_list <- append(Tij_list,list(mutate(temp_df,x=(1-mu)*x)))
 
     # with mutation
     for(mut_group in mutation_destinations[group_row,-1]){ # for each of the 4 possible mutations
-      temp_df <- expand.grid(i=Tij_group_inds,j=(1:npatch)+npatch*(mut_group-1))
-      temp_df$x <- (mu/4)*as.vector(patchwise_cmat)
-      Tij_list <- append(Tij_list,list(temp_df))
+      Tij_list <- append(Tij_list,list(mutate(temp_df,x=(mu/4)*x,j=j+npatch*(mut_group-group_row))))
     }
     
     phase2_total <- (proc.time()-start_phase2) + phase2_total
   }
   
+  # store Tij in sparse matrix form, and remove everything else
   Tij_df <- bind_rows(Tij_list)
   rm(Tij_list)
   Tij_df <- filter(Tij_df,x!=0)
@@ -124,18 +123,23 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
   ###### 3. Pij
   # One row for each row of matrix_index and Tij (i.e. each combo of parameter values and patch); one column for each timestep. 
   # (it's faster for R to grab columns than rows)
-  Pij <- matrix(data=0,nrow=nrow(matrix_index),ncol=nsteps)
+  # Pij <- matrix(data=0,nrow=nrow(matrix_index),ncol=nsteps)
+  Pij <- rep(list(vector(length=nrow(matrix_index))),nsteps)
   
   ########## Simulation ##########
   
   # initialize starting population
   # everybody starts with same parameter values and each site at its carrying capacity
+  #inds_to_fill <- which(matrix_index$alpha==alpha_start & matrix_index$theta==theta_start & matrix_index$p==p_start)
+  # Pij[inds_to_fill,1] <- patch_locations$K_i[matrix_index$patch[inds_to_fill]]
+  
   inds_to_fill <- which(matrix_index$alpha==alpha_start & matrix_index$theta==theta_start & matrix_index$p==p_start)
-  Pij[inds_to_fill,1] <- patch_locations$K_i[matrix_index$patch[inds_to_fill]]
+  Pij[[1]][inds_to_fill] <- patch_locations$K_i[matrix_index$patch[inds_to_fill]]
   
   for(t in 2:nsteps){
-    # reproduction and dispersal and mutation
-    temp_newpop <- Pij[,t-1] %*% Tij # technically the Pij vector should be a row vector rather than a column vector, but R doesn't care
+    ## Reproduction and Dispersal and Mutation
+    # temp_newpop <- Pij[,t-1] %*% Tij # technically the Pij vector should be a row vector rather than a column vector, but R doesn't care
+    temp_newpop <- Pij[[t-1]] %*% Tij # technically the Pij vector should be a row vector rather than a column vector, but R doesn't care
     
     ## Competition
     # if a patch has population greater than K, sample K individuals and distribute them among cells in that patch
@@ -151,45 +155,48 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
                             replace=TRUE) |> # same cell can be chosen by multiple individuals
           tabulate() # make into a vector with the number of individuals that chose each cell
         survivors <- c(survivors,rep(0, length(patch_inds_Pij) - length(survivors))) # add zeros to the end for cells past the last one chosen
-        Pij[patch_inds_Pij,t] <- survivors # put those surviving larvae in the right place in Pij at the new timestep
+        #Pij[patch_inds_Pij,t]] <- survivors # put those surviving larvae in the right place in Pij at the new timestep
+        Pij[[t]][patch_inds_Pij] <- survivors # put those surviving larvae in the right place in Pij at the new timestep
       }
     }
     
-    if(plot_kernel_dynamic==TRUE & t %% round(nsteps/100) == 0){
-      if(sum(Pij[,t],na.rm=TRUE)>0){
-        # histogram of kernel means (alpha*theta)
-        thisstep <- cbind(Pij[,t],matrix_index) %>%
-          rename(popsize=paste0('Pij[, t]')) %>%
-          filter(popsize>0) %>%
-          mutate(kern_mean=v_alphas[alpha]*v_thetas[theta],
-                 kern_mode=ifelse(v_alphas[alpha]<1,0,(v_alphas[alpha]-1)*v_thetas[theta]))
-        break_vec <- seq(from=0,to=1,length.out=50)
-        #break_vec <- seq(from=min(thisstep$kern_mode),to=max(thisstep$kern_mode),length.out=20)
-        break_inds <- data.frame(kern_mode_bin=1:length(break_vec),l_end=break_vec,r_end=lead(break_vec))[1:19,]
-        thisstep <- mutate(thisstep, kern_mode_bin = cut(kern_mode,breaks=break_vec, include.lowest=TRUE,labels=FALSE)) %>%
-          group_by(kern_mode_bin) %>%
-          summarize(popsize=sum(popsize))%>%
-          right_join(break_inds,by='kern_mode_bin')
-        thisstep$popsize[is.na(thisstep$popsize)] <- 0
-        
-        mode_ticks <- expand.grid(alpha=v_alphas,theta=v_thetas) %>%
-          mutate(mode=ifelse(alpha<1,0,(alpha-1)*theta))
-        
-        g <- ggplot(thisstep,aes(x=l_end,y=popsize))+
-          geom_bar(stat='identity')+
-          labs(x='kernel mode',title=paste("t =", t))+
-          geom_point(data=filter(mode_ticks,mode<=max(break_vec)),aes(x=mode),y=0)+
-          xlim(-.04,max(break_vec))+
-          ylim(0,sum(K))
-        print(g)
-      } else print(paste("t=",t,': pop=0'))
-    }
+    # if(plot_kernel_dynamic==TRUE & t %% round(nsteps/100) == 0){
+    #   if(sum(Pij[,t],na.rm=TRUE)>0){
+    #     # histogram of kernel means (alpha*theta)
+    #     thisstep <- cbind(Pij[,t],matrix_index) %>%
+    #       rename(popsize=paste0('Pij[, t]')) %>%
+    #       filter(popsize>0) %>%
+    #       mutate(kern_mean=v_alphas[alpha]*v_thetas[theta],
+    #              kern_mode=ifelse(v_alphas[alpha]<1,0,(v_alphas[alpha]-1)*v_thetas[theta]))
+    #     break_vec <- seq(from=0,to=1,length.out=50)
+    #     #break_vec <- seq(from=min(thisstep$kern_mode),to=max(thisstep$kern_mode),length.out=20)
+    #     break_inds <- data.frame(kern_mode_bin=1:length(break_vec),l_end=break_vec,r_end=lead(break_vec))[1:19,]
+    #     thisstep <- mutate(thisstep, kern_mode_bin = cut(kern_mode,breaks=break_vec, include.lowest=TRUE,labels=FALSE)) %>%
+    #       group_by(kern_mode_bin) %>%
+    #       summarize(popsize=sum(popsize))%>%
+    #       right_join(break_inds,by='kern_mode_bin')
+    #     thisstep$popsize[is.na(thisstep$popsize)] <- 0
+    #     
+    #     mode_ticks <- expand.grid(alpha=v_alphas,theta=v_thetas) %>%
+    #       mutate(mode=ifelse(alpha<1,0,(alpha-1)*theta))
+    #     
+    #     g <- ggplot(thisstep,aes(x=l_end,y=popsize))+
+    #       geom_bar(stat='identity')+
+    #       labs(x='kernel mode',title=paste("t =", t))+
+    #       geom_point(data=filter(mode_ticks,mode<=max(break_vec)),aes(x=mode),y=0)+
+    #       xlim(-.04,max(break_vec))+
+    #       ylim(0,sum(K))
+    #     print(g)
+    #   } else print(paste("t=",t,': pop=0'))
+    # }
     
     if(t %% round(nsteps/10) == 0) print(t)
     
   } # t
   
   ########## Process data for plotting ##########
+  
+  Pij <- do.call(cbind,Pij)
   
   # melt into a dataframe with columns patch, timestep, alpha, theta, p, popsize
   # add columns for param values at each time/patch/alpha/theta/p combo, scaled by the population size that has that combo

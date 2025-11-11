@@ -24,8 +24,8 @@ source('functions/utility_functions.R')
 # Parameters
 
 ```{r}
-nx <- 4 # size of space in the x dimension
-ny <- 4 # size of space in the y dimension
+nx <- 10 # size of space in the x dimension
+ny <- 10 # size of space in the y dimension
 
 nsteps <- 3000 # timesteps
 
@@ -73,6 +73,8 @@ f_PlotOutput(orig_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length
 ```{r}
 sparse_out <- f_RunMatrixSimSparse(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,plot_kernel_dynamic=FALSE)
 f_PlotOutput(sparse_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+summarize(filter(sparse_out$by_t,t>=0.75*nsteps),med_alpha=median(alpha),med_theta=median(theta),sd_alpha=sd(alpha),sd_theta=sd(theta))
+sparse_out[[4]]
 ```
 
 

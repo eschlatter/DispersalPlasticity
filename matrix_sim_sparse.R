@@ -108,10 +108,9 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
   
   # store Tij in sparse matrix form, and remove everything else
   Tij_df <- bind_rows(Tij_list)
-  rm(Tij_list)
   Tij_df <- filter(Tij_df,x!=0)
   Tij <- sparseMatrix(i=Tij_df$i,j=Tij_df$j,x=Tij_df$x,dims=c(nrow(matrix_index),nrow(matrix_index)))
-  rm(Tij_df)
+  rm(Tij_df,Tij_list)
   
   print("Tij finished")
   print(proc.time()-starttime)
@@ -128,24 +127,25 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
   
   ########## Simulation ##########
   
+  # get these here, to avoid all the which() statements in the competition loop
+  patch_inds_Pij_list <- lapply(1:npatch,function(i_patch)which(matrix_index$patch==i_patch))
+  
   # initialize starting population
   # everybody starts with same parameter values and each site at its carrying capacity
   #inds_to_fill <- which(matrix_index$alpha==alpha_start & matrix_index$theta==theta_start & matrix_index$p==p_start)
   # Pij[inds_to_fill,1] <- patch_locations$K_i[matrix_index$patch[inds_to_fill]]
-  
   inds_to_fill <- which(matrix_index$alpha==alpha_start & matrix_index$theta==theta_start & matrix_index$p==p_start)
   Pij[[1]][inds_to_fill] <- patch_locations$K_i[matrix_index$patch[inds_to_fill]]
   
   for(t in 2:nsteps){
     ## Reproduction and Dispersal and Mutation
-    # temp_newpop <- Pij[,t-1] %*% Tij # technically the Pij vector should be a row vector rather than a column vector, but R doesn't care
     temp_newpop <- Pij[[t-1]] %*% Tij # technically the Pij vector should be a row vector rather than a column vector, but R doesn't care
     
     ## Competition
     # if a patch has population greater than K, sample K individuals and distribute them among cells in that patch
     # (with probability according to the current abundance of each cell)
     for(i_patch in 1:npatch){
-      patch_inds_Pij <- which(matrix_index$patch==i_patch) # get the row numbers in Pij corresponding to the focal patch
+      patch_inds_Pij <- patch_inds_Pij_list[[i_patch]] # get the row numbers in Pij corresponding to the focal patch
       patch_abund <- sum(temp_newpop[patch_inds_Pij]) # calculate abundance in the patch
       if(patch_abund>0){ # if abundance is (less than or) equal to 0, the relevant Pij entries for the next timestep are already 0, so we don't need to do anything else
         # choose min(abundance,K) survivors, assigned to parameter values according to the current abundances in those cells
@@ -155,40 +155,9 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
                             replace=TRUE) |> # same cell can be chosen by multiple individuals
           tabulate() # make into a vector with the number of individuals that chose each cell
         survivors <- c(survivors,rep(0, length(patch_inds_Pij) - length(survivors))) # add zeros to the end for cells past the last one chosen
-        #Pij[patch_inds_Pij,t]] <- survivors # put those surviving larvae in the right place in Pij at the new timestep
         Pij[[t]][patch_inds_Pij] <- survivors # put those surviving larvae in the right place in Pij at the new timestep
       }
     }
-    
-    # if(plot_kernel_dynamic==TRUE & t %% round(nsteps/100) == 0){
-    #   if(sum(Pij[,t],na.rm=TRUE)>0){
-    #     # histogram of kernel means (alpha*theta)
-    #     thisstep <- cbind(Pij[,t],matrix_index) %>%
-    #       rename(popsize=paste0('Pij[, t]')) %>%
-    #       filter(popsize>0) %>%
-    #       mutate(kern_mean=v_alphas[alpha]*v_thetas[theta],
-    #              kern_mode=ifelse(v_alphas[alpha]<1,0,(v_alphas[alpha]-1)*v_thetas[theta]))
-    #     break_vec <- seq(from=0,to=1,length.out=50)
-    #     #break_vec <- seq(from=min(thisstep$kern_mode),to=max(thisstep$kern_mode),length.out=20)
-    #     break_inds <- data.frame(kern_mode_bin=1:length(break_vec),l_end=break_vec,r_end=lead(break_vec))[1:19,]
-    #     thisstep <- mutate(thisstep, kern_mode_bin = cut(kern_mode,breaks=break_vec, include.lowest=TRUE,labels=FALSE)) %>%
-    #       group_by(kern_mode_bin) %>%
-    #       summarize(popsize=sum(popsize))%>%
-    #       right_join(break_inds,by='kern_mode_bin')
-    #     thisstep$popsize[is.na(thisstep$popsize)] <- 0
-    #     
-    #     mode_ticks <- expand.grid(alpha=v_alphas,theta=v_thetas) %>%
-    #       mutate(mode=ifelse(alpha<1,0,(alpha-1)*theta))
-    #     
-    #     g <- ggplot(thisstep,aes(x=l_end,y=popsize))+
-    #       geom_bar(stat='identity')+
-    #       labs(x='kernel mode',title=paste("t =", t))+
-    #       geom_point(data=filter(mode_ticks,mode<=max(break_vec)),aes(x=mode),y=0)+
-    #       xlim(-.04,max(break_vec))+
-    #       ylim(0,sum(K))
-    #     print(g)
-    #   } else print(paste("t=",t,': pop=0'))
-    # }
     
     if(t %% round(nsteps/10) == 0) print(t)
     

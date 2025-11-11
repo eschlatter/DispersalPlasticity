@@ -82,11 +82,14 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
   Tij <- sparseMatrix(i=nonzeros$i,j=nonzeros$j,x=0,dims=c(nrow(matrix_index),nrow(matrix_index)))
   rm(nonzeros)
   
+  phase1_total <- 0
+  phase2_total <- 0
   # fill up Tij
   # do the following for every combination of parameters (i.e., "group")
   for(group_row in 1:nrow(group_index)){
     v <- group_index[group_row,] # get parameter values for that row
 
+    start_phase1 <- proc.time()
     # make the patch-wise connectivity matrix
     # build it one row at a time because each row represents a different origin patch
     # origin patches may have different patch qualities, and therefore different dispersal kernels
@@ -99,7 +102,10 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
       # multiply by b_i to get number of larvae (per adult in origin patch) dispersing from origin patch to everywhere
       patchwise_cmat[patch_i,] <- b[patch_i]*cmat
     }
- 
+    phase1_total <- (proc.time()-start_phase1) + phase1_total
+    
+    
+    start_phase2 <- proc.time()
     # distribute the larvae among their new parameter values (with mutation):
     # place patchwise_cmat multiplied by (1-mu) into Tij for the current parameter group,
     # and (multiplied by mu/4) for the parameter group of each mutation possibility
@@ -110,13 +116,19 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
     Tij[Tij_group_inds,Tij_group_inds] <- (1-mu)*patchwise_cmat
 
     # with mutation
-    for(mut_group in mutation_destinations[group_row,-1]){
+    for(mut_group in mutation_destinations[group_row,-1]){ # for each of the 4 possible mutations
       Tij[Tij_group_inds,(1:npatch)+npatch*(mut_group-1)] <- (mu/4)*patchwise_cmat + Tij[Tij_group_inds,(1:npatch)+npatch*(mut_group-1)]
     }
+    
+    phase2_total <- (proc.time()-start_phase2) + phase2_total
   }
   
   print("Tij finished")
   print(proc.time()-starttime)
+  print("Phase 1:")
+  print(phase1_total)
+  print("Phase 2:")
+  print(phase2_total)
   
   ###### 3. Pij
   # One row for each row of matrix_index and Tij (i.e. each combo of parameter values and patch); one column for each timestep. 

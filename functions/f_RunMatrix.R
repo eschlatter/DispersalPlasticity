@@ -1,4 +1,4 @@
-f_RunMatrix <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,patch_locations=NULL){
+f_RunMatrix <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,disturb_prob=0,patch_locations=NULL){
   starttime <- proc.time()
   
   ########## Data structures to describe space and dispersal ##########
@@ -156,6 +156,20 @@ f_RunMatrix <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_sta
   Pij[[1]][inds_to_fill] <- patch_locations$K_i[matrix_index$patch[inds_to_fill]]
   
   for(t in 2:nsteps){
+    
+    ## Disturbance
+    if(t %% 10 == 0){
+      # first, reset all K's from any disturbance that occurred 10 timesteps previously
+      patch_locations$K_i <- as.vector(K)
+      
+      # then make a new disturbance (maybe)
+      if(rbinom(n=1,size=1,p=disturb_prob)==1){
+        disturb <- ideal.map(ny, nx, p = 0.2, nshape = 1, type = "circle", maxval = 1, minval = 0, binmap = TRUE, rasterflag = FALSE, plotflag=FALSE)
+        disturb_patches <- as.numeric(na.omit(patch_map[disturb!=0]))
+        patch_locations$K_i[disturb_patches] <- 0
+      }
+    }
+    
     ## Reproduction and Dispersal and Mutation
     temp_newpop <- Pij[[t-1]] %*% Tij # technically the Pij vector should be a row vector rather than a column vector, but R doesn't care
     

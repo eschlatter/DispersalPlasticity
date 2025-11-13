@@ -13,7 +13,10 @@ patch_locations <- as.data.frame(which(!is.na(testmap),arr.ind=TRUE)) %>%
   rowid_to_column(var='id')
 patch_locations <- mutate(patch_locations,K_i=testmap[y+(x-1)*nrow(testmap)])
 patch_locations$K_i <- round((K_neutral/3)*scale(patch_locations$K_i)+K_neutral)
+K <- patch_locations$K_i
+
 f_Plot_Landscape(patch_locations,nx,ny)
+save(patch_locations,K,nx,ny,file='seascapes/Fractal_17x17_n87.RData')
 
 ## fractal landscape, 33x33 (~325 patches)
 K_neutral=5

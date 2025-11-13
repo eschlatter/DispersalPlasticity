@@ -1,9 +1,9 @@
-f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,plot_kernel_dynamic=FALSE){
+f_RunMatrix <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,patch_locations=NULL){
   starttime <- proc.time()
   
   ########## Data structures to describe space and dispersal ##########
   # see utility functions/f_MakeHabitat for details on what's in each object
-  hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas)
+  hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas,patch_locations)
   patch_locations <- hab$patch_locations
   patch_map <- hab$patch_map
   patch_dists <- hab$patch_dists
@@ -11,8 +11,8 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
   conn_matrices <- hab$conn_matrices
   npatch <- hab$npatch
   rm(hab)
-  patch_locations$K_i <- as.vector(K)
-  patch_locations$b_i <- as.vector(b)
+  if(!"K_i" %in% colnames(patch_locations)) patch_locations$K_i <- as.vector(K)
+  patch_locations$b_i <- b_neutral
   
   ########## Data structures to describe population ##########
   # 1. matrix_index: "key" to which parameter values and patch are represented by rows of the following two objects
@@ -130,12 +130,12 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
   Tij <- sparseMatrix(i=Tij_df$i,j=Tij_df$j,x=Tij_df$x,dims=c(nrow(matrix_index),nrow(matrix_index)))
   rm(Tij_df)
   
-  print("Tij finished")
-  print(proc.time()-starttime)
-  print("Phase 1:")
-  print(phase1_total)
-  print("Phase 2:")
-  print(phase2_total)
+  # print("Tij finished")
+  # print(proc.time()-starttime)
+  # print("Phase 1:")
+  # print(phase1_total)
+  # print("Phase 2:")
+  # print(phase2_total)
   
   ###### 3. Pij
   # One row for each row of matrix_index and Tij (i.e. each combo of parameter values and patch); one column for each timestep. 

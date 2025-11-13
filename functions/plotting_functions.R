@@ -341,3 +341,14 @@ f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){
   
   print(g)
 }
+
+f_Plot_Landscape <- function(patch_locations,nx,ny){
+  g <- ggplot(patch_locations,aes(x=x,y=y))+
+    geom_tile(aes(fill=K_i))+
+    geom_vline(data=data.frame(x=seq(from=0.5,to=nx+0.5,by=1)),aes(xintercept=x),alpha=0.8,color='darkgray')+
+    geom_hline(data=data.frame(y=seq(from=0.5,to=ny+0.5,by=1)),aes(yintercept=y),alpha=0.8,color='darkgray')+
+    scale_y_reverse()+
+    theme_minimal()+
+    labs(title="Carrying capacity (K) by patch")
+  print(g)
+}

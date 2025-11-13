@@ -1,0 +1,59 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-11-13"
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(tibble)
+library(tidyr)
+library(scales)
+library(gridExtra)
+library(reshape2)
+library(fields)
+library(Matrix)
+source('functions/f_RunIBM.R')
+source('functions/f_RunMatrix.R')
+source('functions/neutral_landscape.R')
+source('functions/plotting_functions.R')
+source('functions/utility_functions.R')
+```
+
+Load a premade seascape
+```{r}
+## load parameters and seascape
+load('params/ParSet1.RData') # load parameters
+list2env(pars_save,envir=environment())
+load('seascapes/Fractal_33x33_n325.RData') # load seascape
+f_Plot_Landscape(patch_locations,nx,ny) # plot it
+
+## run the model
+sim_out <- f_RunMatrix(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,patch_locations = patch_locations)
+
+## plot output
+f_Plot_Landscape(patch_locations,nx,ny) # plot it
+f_PlotOutput(sim_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+f_PlotAllHeatmaps(sim_out$sim_melt,sim_out$patch_locations)
+```
+
+Generate a new seascape
+```{r}
+# load parameters
+load('params/ParSet1.RData')
+list2env(pars_save,envir=environment())
+#simulate seascape
+seasc <- f_GenerateFractalSeascape(k=5,h=0.5,amt_covered=0.3,K_neutral = 5)
+list2env(seasc,envir=environment())
+nsteps=15
+
+## run the model
+sparse_out <- f_RunMatrix(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,patch_locations = patch_locations)
+
+## plot output
+f_PlotOutput(sparse_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+f_PlotAllHeatmaps(sparse_out$sim_melt,sparse_out$patch_locations)
+
+```
+

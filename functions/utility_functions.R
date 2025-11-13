@@ -22,25 +22,41 @@ f_plasticity2 <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_go
   return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
 }
 
-f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas){
-  # list of patch locations and IDs
-  # (dimensions npatch x 3)
-  # "location" is the center of the patch
-  patch_locations <- expand.grid(y=1:ny,x=1:nx) %>% # do y first so that patches are ordered columnwise, like the way R fills a matrix
+f_GenerateFractalSeascape <- function(k,h,amt_covered,K_neutral,plot_out=TRUE){
+  testmap=fracland(k=5,h=0.5,p=1-amt_covered,binary=FALSE,plotflag=FALSE)
+  nx=ncol(testmap)
+  ny=nrow(testmap)
+  testmap[testmap<quantile(testmap,1-amt_covered)] <- NA
+  patch_locations <- as.data.frame(which(!is.na(testmap),arr.ind=TRUE)) %>%
+    rename(y=row,x=col) %>%
     rowid_to_column(var='id')
-  # this is a simple version of patch_locations (all the squares of a grid); eventually we'll want to import a map.
-  # I think we'll be able to just keep track of reef patches, not open ocean
+  patch_locations <- mutate(patch_locations,K_i=testmap[y+(x-1)*nrow(testmap)])
+  patch_locations$K_i <- round((K_neutral/3)*scale(patch_locations$K_i)+K_neutral)
+  K <- patch_locations$K_i
+  
+  f_Plot_Landscape(patch_locations,nx,ny) # plot it
+  return(list(patch_locations=patch_locations,K=K,nx=nx,ny=ny))
+}
+
+f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL){
+  # list of patch locations and IDs
+  # (dimensions: npatch x 3)
+  # "location" is the center of the 
+  if(is.null(patch_locations)){ # if not specified by an input map, then make one
+    patch_locations <- expand.grid(y=1:ny,x=1:nx) %>% # do y first so that patches are ordered columnwise, like the way R fills a matrix
+      rowid_to_column(var='id')
+  }
   npatch <- nrow(patch_locations)
   
   # a "map" of the patch numbers, spatially arranged
-  # (dimensions nx x ny)
+  # (dimensions: nx x ny)
   patch_map <- matrix(nrow=ny,ncol=nx)
   for(i in 1:npatch){
     patch_map[patch_locations$y[i],patch_locations$x[i]] <- patch_locations$id[i]
   }
   
   # a matrix of distances between the centers of each patch (i.e., r in polar coords)
-  # (dimensions npatch x npatch)
+  # (dimensions: npatch x npatch)
   patch_dists <- matrix(nrow=npatch,ncol=npatch)
   colnames(patch_dists) <- patch_locations$id
   for(i in 1:npatch){
@@ -49,20 +65,14 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas){
   
   # a matrix of the size of the pie wedge between each patch (i.e., theta in polar coords -- not theta of the dispersal kernel)
   # assuming the width of the cell at the given distance is 1: not quite correct most of the time, but probably close enough
-  # (dimensions npatch x npatch)
+  # (dimensions: npatch x npatch)
   patch_angles <- suppressWarnings(2*asin(1/(2*patch_dists))/(2*pi))
   patch_angles[is.nan(patch_angles)] <- 1
   
-  #check: proportion of individuals from each patch that land in a patch (same configuration as patch_map).
-  # Shouldn't be greater than 1 anywhere, and should be smaller where fewer patches are reachable.
-  cm <- f_GetConnectivityMatrix(1,2,patch_dists,patch_angles)
-  t(matrix(rowSums(cm),nrow=nrow(patch_map))) 
-  
   # connectivity matrices
-  # (dimensions nalpha x ntheta x npatch x npatch)
+  # (dimensions: nalpha x ntheta x npatch x npatch)
   # Should we calculate them for each possible kernel up front?
   # There are probably some kernels that won't get used, so this might be a bit wasteful. But, for now, let's do it. We can be more efficient later.
-  # Should we allow kernels to evolve past the predefined ones? Maybe. (Probably?) Let's implement this later on.
   conn_matrices <- array(NA,dim=c(length(v_alphas),length(v_thetas),npatch,npatch))
   for(i_alpha in 1:length(v_alphas)){
     for(i_theta in 1:length(v_thetas)){

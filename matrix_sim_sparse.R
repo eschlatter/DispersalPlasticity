@@ -64,6 +64,8 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
 
   # fill up Tij
   Tij_list <- list() # we'll add elements of Tij to a list, and then put everything in the sparse matrix at once
+  # Tij_df <- data.frame(i=integer(length=nrow(matrix_index)*npatch*8),j=integer(length=nrow(matrix_index)*npatch*8),x=0)
+  # Tij_df_at <- 1
   # do the following for every combination of parameters (i.e., "group")
   for(group_row in 1:nrow(group_index)){
     v <- group_index[group_row,] # get parameter values for that row
@@ -94,23 +96,39 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
     Tij_group_inds <- (1:npatch)+npatch*(group_row-1)
     temp_df <- expand.grid(i=Tij_group_inds,j=Tij_group_inds)
     temp_df$x <- as.vector(patchwise_cmat)
+    temp_df$i <- as.integer(temp_df$i)
+    temp_df$j <- as.integer(temp_df$j)
+    
     
     # no mutation
     Tij_list <- append(Tij_list,list(mutate(temp_df,x=(1-mu)*x)))
+    # Tij_df[Tij_df_at:(Tij_df_at+nrow(temp_df)-1),] <- mutate(temp_df,x=(1-mu)*x)
+    # Tij_df_at <- Tij_df_at+nrow(temp_df)
 
     # with mutation
     for(mut_group in mutation_destinations[group_row,-1]){ # for each of the 4 possible mutations
       Tij_list <- append(Tij_list,list(mutate(temp_df,x=(mu/4)*x,j=j+npatch*(mut_group-group_row))))
+      # Tij_df[Tij_df_at:(Tij_df_at+nrow(temp_df)-1),] <- mutate(temp_df,x=(mu/4)*x,j=j+npatch*(mut_group-group_row))
+      # Tij_df_at <- Tij_df_at+nrow(temp_df)
     }
     
     phase2_total <- (proc.time()-start_phase2) + phase2_total
   }
   
   # store Tij in sparse matrix form, and remove everything else
+  # for(Tij_part in Tij_list){
+  #   write_csv(Tij_part,file="temp_Tij.csv",append=TRUE,col_names=TRUE)
+  # }
+  # rm(Tij_list)
+  # Tij <- sparseMatrix(i=read_csv('temp_Tij.csv',col_select=i),
+  #                     j=read_csv('temp_Tij.csv',col_select=j),
+  #                     x=read_csv('temp_Tij.csv',col_select=x),
+  #                     dims=c(nrow(matrix_index),nrow(matrix_index)))  
   Tij_df <- bind_rows(Tij_list)
-  Tij_df <- filter(Tij_df,x!=0)
+  Tij_df <- Tij_df[which(Tij_df$x!=0),]
+  rm(Tij_list)
   Tij <- sparseMatrix(i=Tij_df$i,j=Tij_df$j,x=Tij_df$x,dims=c(nrow(matrix_index),nrow(matrix_index)))
-  rm(Tij_df,Tij_list)
+  rm(Tij_df)
   
   print("Tij finished")
   print(proc.time()-starttime)
@@ -123,7 +141,7 @@ f_RunMatrixSimSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,
   # One row for each row of matrix_index and Tij (i.e. each combo of parameter values and patch); one column for each timestep. 
   # (it's faster for R to grab columns than rows)
   # Pij <- matrix(data=0,nrow=nrow(matrix_index),ncol=nsteps)
-  Pij <- rep(list(vector(length=nrow(matrix_index))),nsteps)
+  Pij <- rep(list(vector(mode="numeric",length=nrow(matrix_index))),nsteps)
   
   ########## Simulation ##########
   

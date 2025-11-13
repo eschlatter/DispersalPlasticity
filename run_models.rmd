@@ -17,6 +17,7 @@ library(Matrix)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSimFlat.R')
+source('matrix_sim_sparse.R')
 source('functions/plotting_functions.R')
 source('functions/utility_functions.R')
 ```
@@ -24,16 +25,16 @@ source('functions/utility_functions.R')
 # Parameters
 
 ```{r}
-nx <- 10 # size of space in the x dimension
-ny <- 10 # size of space in the y dimension
+nx <- 30 # size of space in the x dimension
+ny <- 30 # size of space in the y dimension
 
-nsteps <- 3000 # timesteps
+nsteps <- 12 # timesteps
 
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
 v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
-alpha_start <- 1 # index (in v_alphas) of shape parameter initial value
-theta_start <- 1 # index in (v_thetas) of scale parameter initial value
+alpha_start <- 3 # index (in v_alphas) of shape parameter initial value
+theta_start <- 3 # index in (v_thetas) of scale parameter initial value
 
 # plasticity parameter currently doesn't affect anything or evolve
 v_p <- seq(from=0,to=0.9,length.out=2) # values the plasticity parameter can take

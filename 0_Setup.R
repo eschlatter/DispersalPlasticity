@@ -1,0 +1,17 @@
+# Run this first to load everything needed
+
+library(dplyr)
+library(ggplot2)
+library(tibble)
+library(tidyr)
+library(scales)
+library(gridExtra)
+library(reshape2)
+library(fields)
+library(Matrix)
+
+source('functions/f_RunIBM.R')
+source('functions/f_RunMatrix.R')
+source('functions/neutral_landscape.R')
+source('functions/plotting_functions.R')
+source('functions/utility_functions.R')

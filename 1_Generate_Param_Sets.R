@@ -1,12 +1,4 @@
-library(dplyr)
-library(ggplot2)
-library(tibble)
-library(tidyr)
-library(scales)
-library(gridExtra)
-library(reshape2)
-library(fields)
-library(Matrix)
+source('0_Setup.R')
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSimFlat.R')

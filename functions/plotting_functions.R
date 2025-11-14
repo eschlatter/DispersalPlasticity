@@ -164,35 +164,40 @@ f_PlotBubbleMatrix <- function(sim_melt,patch_locations,plot_int=NA){
 
 ############## after-the-fact heatmap function for matrix model ##################
 # inputs:
+#   replot_data: if it's been done before for this sim, can reuse the processed data from last time
 #   sim_array_t: just the portion of sim_array from timestep t
 #   patch_locations for mapmaking
-f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA){
+#   plot_int: specify timesteps to plot
+f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA,replot_data=NULL){
   if(prod(is.na(plot_int))==1){
     plot_int <- round(max(sim_melt$t)/10) # set the plotting interval, unless specified
     plot_ints <- seq(from=plot_int,to=max(sim_melt$t),by=plot_int)
   } 
   else plot_ints <- plot_int
   
-  # process data
-  alpha_by_patch <- group_by(sim_melt,patch,alpha,t) %>%
-    summarize(popsize=sum(popsize),.groups='drop') %>%  # add up what's in the boxes with all values of theta
-    group_by(patch,t) %>%
-    summarize(alpha_m=sum(alpha*popsize)/sum(popsize), # at each patch, find the mean and variance of alpha values
-              alpha_v=sum(popsize*(alpha-alpha_m)^2)/sum(popsize),
-              .groups='drop') %>%   
-    left_join(patch_locations,by=c("patch" = "id"))
-  
-  theta_by_patch <- group_by(sim_melt,patch,theta,t) %>%
-    summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha
-    group_by(patch,t) %>%
-    summarize(theta_m=sum(theta*popsize)/sum(popsize),
-              theta_v=sum(popsize*(theta-theta_m)^2)/sum(popsize),
-              .groups='drop') %>%
-    left_join(patch_locations,by=c("patch" = "id"))
-  
-  pop_by_patch <- group_by(sim_melt,patch,t) %>%
-    summarize(popsize=sum(popsize),.groups='drop') %>%
-    left_join(patch_locations,by=c("patch" = "id"))
+  if(is.null(replot_data)){
+    # process data
+    alpha_by_patch <- group_by(sim_melt,patch,alpha_value,t) %>%
+      summarize(popsize=sum(popsize),.groups='drop') %>%  # add up what's in the boxes with all values of theta
+      group_by(patch,t) %>%
+      summarize(alpha_m=sum(alpha_value*popsize)/sum(popsize), # at each patch, find the mean and variance of alpha values
+                alpha_v=sum(popsize*(alpha_value-alpha_m)^2)/sum(popsize),
+                .groups='drop') %>%   
+      left_join(patch_locations,by=c("patch" = "id"))
+    
+    theta_by_patch <- group_by(sim_melt,patch,theta_value,t) %>%
+      summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha
+      group_by(patch,t) %>%
+      summarize(theta_m=sum(theta_value*popsize)/sum(popsize),
+                theta_v=sum(popsize*(theta_value-theta_m)^2)/sum(popsize),
+                .groups='drop') %>%
+      left_join(patch_locations,by=c("patch" = "id"))
+    
+    pop_by_patch <- group_by(sim_melt,patch,t) %>%
+      summarize(popsize=sum(popsize),.groups='drop') %>%
+      left_join(patch_locations,by=c("patch" = "id"))
+  }
+  else list2env(replot_data,envir=environment())
   
   ## make plots
   for(t_i in plot_ints){
@@ -232,8 +237,10 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA){
       scale_y_reverse()
     
     #grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
-    grid.arrange(plot_alpha, plot_theta,ncol=2,top=paste0('t = ',t_i))
+    grid.arrange(plot_alpha, plot_theta, plot_abund, ncol=2,top=paste0('t = ',t_i))
   }
+  replot_data <- list(alpha_by_patch,theta_by_patch,pop_by_patch)
+  return(replot_data)
 }
 
 ############## dynamic heatmap function for matrix model ##################

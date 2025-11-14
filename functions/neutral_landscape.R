@@ -55,9 +55,16 @@ ideal.map <- function(row, col, p = 0.1, nshape = 1, type = "fractal", maxval = 
   if (type %in% c("square", "circle")) {
     
     ## this hard-wires the location of the (maximum five) shapes. Could be smarter, but this works.
-    shapelocs <- list(shape1 = cbind(center.row, center.col), shape2 = cbind(round(center.row/2), round(center.col/2)), shape3 = cbind(round(center.row * 
-                                                                                                                                               1.5), round(center.col * 1.5)), shape4 = cbind(round(center.row * 1.5), round(center.col/2)), shape5 = cbind(round(center.row/2), 
-                                                                                                                                                                                                                                                            round(center.col * 1.5)))
+    # shapelocs <- list(shape1 = cbind(center.row, center.col), 
+    #                   shape2 = cbind(round(center.row/2), round(center.col/2)), 
+    #                   shape3 = cbind(round(center.row * 1.5), round(center.col * 1.5)), 
+    #                   shape4 = cbind(round(center.row * 1.5), round(center.col/2)), 
+    #                   shape5 = cbind(round(center.row/2), round(center.col * 1.5)))
+    shapelocs <- list(shape1 = c(round(runif(n=1,min=1,max=row)),round(runif(n=1,min=1,max=col))),
+                      shape2 = c(round(runif(n=1,min=1,max=row)),round(runif(n=1,min=1,max=col))),
+                      shape3 = c(round(runif(n=1,min=1,max=row)),round(runif(n=1,min=1,max=col))),
+                      shape4 = c(round(runif(n=1,min=1,max=row)),round(runif(n=1,min=1,max=col))),
+                      shape5 = c(round(runif(n=1,min=1,max=row)),round(runif(n=1,min=1,max=col))))
     
     for (shape in 1:min(nshape, 5)) {
       shaperow <- shapelocs[[shape]][1]

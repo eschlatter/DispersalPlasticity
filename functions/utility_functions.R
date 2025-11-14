@@ -22,22 +22,59 @@ f_plasticity2 <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_go
   return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
 }
 
-f_GenerateFractalSeascape <- function(k,h,amt_covered,K_neutral,plot_out=TRUE){
-  testmap=fracland(k=5,h=0.5,p=1-amt_covered,binary=FALSE,plotflag=FALSE)
-  nx=ncol(testmap)
-  ny=nrow(testmap)
-  testmap[testmap<quantile(testmap,1-amt_covered)] <- NA
-  patch_locations <- as.data.frame(which(!is.na(testmap),arr.ind=TRUE)) %>%
+# Inputs:
+#   base_map: a matrix representing habitat configuration (0=open ocean, 1=reef)
+#   if no base map is provided, specify:
+#     k (to get dimension of habitat)
+#     p (proportion of map covered)
+#     h_base (aggregation of habitat area)
+#   K_range (vector with 2 elements): range of carrying capacity values the final map should have 
+#   h: level of aggregation of K values (K is generated via fractal landscape method)
+# Returns:
+#   patch_locations: a dataframe of habitable patches, their locations, and their K values
+#   K in vector form
+#   nx, ny: dimensions of the map
+f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,plot_flag=FALSE){
+  # if no base map is provided, simulate one
+  if(is.null(base_map)){
+    base_map=fracland(k=k,h=h_base,p=1-p,binary=TRUE,plotflag=FALSE)
+  }
+  
+  # add habitat values on top of base map
+  nx=ncol(base_map)
+  ny=nrow(base_map)
+  # find the k value to use in fracland function, given the dimensions of the base map
+  dimens <- (2^(1:15)+1)
+  k <- first(which(dimens>=max(nx,ny)))
+  # generate a fractal layer
+  frac_map <- fracland(k=k,h=h,binary=FALSE,plotflag=FALSE)
+  # convert to desired range of K values
+  frac_map <- (frac_map-min(frac_map))/(max(frac_map)-min(frac_map)) # first to 0-1
+  frac_map <- frac_map*(K_range[2]-K_range[1])+K_range[1]
+  # create full map
+  full_map <- base_map
+  full_map[which(base_map==TRUE)] <- frac_map[which(base_map==TRUE)]
+
+  # put things in the right format for simulation inputs
+  patch_locations <- as.data.frame(which(full_map!=0,arr.ind=TRUE)) %>%
     rename(y=row,x=col) %>%
     rowid_to_column(var='id')
-  patch_locations <- mutate(patch_locations,K_i=testmap[y+(x-1)*nrow(testmap)])
-  patch_locations$K_i <- round((K_neutral/3)*scale(patch_locations$K_i)+K_neutral)
+  patch_locations$K_i <- round(full_map[full_map!=0])
   K <- patch_locations$K_i
+
+  if(plot_flag==TRUE){
+    dev.new()
+    f_Plot_Landscape(patch_locations,nx,ny)
+    a <- dev.list()
+    dev.set(which=as.numeric(a['RStudioGD']))
+  }
   
-  f_Plot_Landscape(patch_locations,nx,ny) # plot it
   return(list(patch_locations=patch_locations,K=K,nx=nx,ny=ny))
 }
 
+# takes existing map (patch_locations)
+# or generates uniform grid (if patch_locations==NULL)
+# returns connectivity matrices and related objects for use in simulation
 f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL){
   # list of patch locations and IDs
   # (dimensions: npatch x 3)

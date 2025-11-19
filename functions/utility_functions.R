@@ -22,6 +22,20 @@ f_plasticity2 <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_go
   return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
 }
 
+f_plasticityK <- function(K_i, p, alpha, theta, n_alpha=5, n_theta=5){
+  if(length(unique(K_i))>1){ # check for the possibility that there isn't variation in K. Assuming there is:
+    bad_thresh <- min(K_i)+(1/3)*(max(K_i)-min(K_i))
+    good_thresh <- min(K_i)+(2/3)*(max(K_i)-min(K_i))
+    alpha_add <- case_when(K_i<bad_thresh ~ -1, #  decide what to add to the alpha index, based on plasticity. It's -1, 0, or +1.
+                           K_i<=good_thresh ~ 0,
+                           K_i>good_thresh ~ 1)
+  }
+  else alpha_add <- rep(0,length(K_i))
+  alpha_plastic <- oob_squish(alpha+round(p)*alpha_add, c(1,n_alpha))
+  theta_plastic <- theta
+  return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
+}
+
 # Inputs:
 #   base_map: a matrix representing habitat configuration (0=open ocean, 1=reef)
 #   if no base map is provided, specify:

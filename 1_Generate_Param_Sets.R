@@ -1,8 +1,8 @@
 source('0_Setup.R')
 
 ########## Param set 1: 
-nx <- 10 # size of space in the x dimension
-ny <- 10 # size of space in the y dimension
+nx <- 20 # size of space in the x dimension
+ny <- 20 # size of space in the y dimension
 nsteps <- 10 # timesteps
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
@@ -19,3 +19,5 @@ K <- round(runif(n=nx*ny,min=3,max=15)) # carrying capacity (also what plasticit
 
 patch_locations=NULL
 b_neutral=b
+b_bad=4
+b_good=16

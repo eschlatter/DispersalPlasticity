@@ -73,7 +73,8 @@ f_RunMatrix <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_sta
     start_phase1 <- proc.time()
     
     # get effective kernel parameters, given plasticity
-    eff_params <- f_plasticity2(as.vector(b),v_p[v$p],v$alpha,v$theta,b_bad,b_neutral,b_good,n_alpha=length(v_alphas),n_theta = length(v_thetas))
+    eff_params <- f_plasticity2(patch_locations$b_i,v_p[v$p],v$alpha,v$theta,b_bad,b_neutral,b_good,n_alpha=length(v_alphas),n_theta = length(v_thetas))
+#    eff_params <- f_plasticityK(as.vector(K),v_p[v$p],v$alpha,v$theta,n_alpha=length(v_alphas),n_theta = length(v_thetas))
     
     # patchwise_cmat: a matrix of per-parent larval dispersal rates among patches, specific to the given parameter group
     # build the matrix one row at a time because each row represents a different origin patch
@@ -82,7 +83,7 @@ f_RunMatrix <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_sta
     for(patch_i in 1:npatch){
       # dispersal frequency matrix from the origin patch to everywhere
       # multiplied by b_i to get number of larvae (per adult in origin patch) dispersing from origin patch to everywhere
-      cmat[[patch_i]] <- b[patch_i]*conn_matrices[eff_params$alpha_plastic[patch_i],eff_params$theta_plastic[patch_i],,patch_i]
+      cmat[[patch_i]] <- patch_locations$b_i[patch_i]*conn_matrices[eff_params$alpha_plastic[patch_i],eff_params$theta_plastic[patch_i],,patch_i]
     }
     patchwise_cmat <- do.call(rbind,cmat)
     rm(cmat)
@@ -157,18 +158,18 @@ f_RunMatrix <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_sta
   
   for(t in 2:nsteps){
     
-    ## Disturbance
-    if(t %% 10 == 0){
-      # first, reset all K's from any disturbance that occurred 10 timesteps previously
-      patch_locations$K_i <- as.vector(K)
-      
-      # then make a new disturbance (maybe)
-      if(rbinom(n=1,size=1,p=disturb_prob)==1){
-        disturb <- ideal.map(ny, nx, p = 0.2, nshape = 1, type = "circle", maxval = 1, minval = 0, binmap = TRUE, rasterflag = FALSE, plotflag=FALSE)
-        disturb_patches <- as.numeric(na.omit(patch_map[disturb!=0]))
-        patch_locations$K_i[disturb_patches] <- 0
-      }
-    }
+    # ## Disturbance
+    # if(t %% 10 == 0){
+    #   # first, reset all K's from any disturbance that occurred 10 timesteps previously
+    #   patch_locations$K_i <- as.vector(K)
+    #   
+    #   # then make a new disturbance (maybe)
+    #   if(rbinom(n=1,size=1,p=disturb_prob)==1){
+    #     disturb <- ideal.map(ny, nx, p = 0.2, nshape = 1, type = "circle", maxval = 1, minval = 0, binmap = TRUE, rasterflag = FALSE, plotflag=FALSE)
+    #     disturb_patches <- as.numeric(na.omit(patch_map[disturb!=0]))
+    #     patch_locations$K_i[disturb_patches] <- 0
+    #   }
+    # }
     
     ## Reproduction and Dispersal and Mutation
     temp_newpop <- Pij[[t-1]] %*% Tij # technically the Pij vector should be a row vector rather than a column vector, but R doesn't care

@@ -9,6 +9,7 @@ library(gridExtra)
 library(reshape2)
 library(fields)
 library(Matrix)
+library(bigsparser)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrix.R')

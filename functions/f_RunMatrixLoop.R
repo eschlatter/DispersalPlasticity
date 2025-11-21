@@ -113,12 +113,9 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
     patch_abunds <- rowSums(temp_pop)
     for(i_patch in 1:npatch){
       if(patch_abunds[i_patch]>0){
-        survivors=sample(x=ngroups, # there are this many cells (i.e., combos of parameter values) for the patch
-                         size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
-                         prob = temp_pop[i_patch,], # probability of each cell being chosen depends on its current abundance
-                         replace=TRUE) |> # same cell can be chosen by multiple individuals
-          tabulate() # make into a vector with the number of individuals that chose each cell
-        survivors <- c(survivors,rep(0, ngroups - length(survivors))) # add zeros to the end for cells past the last one chosen
+        survivors=rmultinom(n=1, # there are this many cells (i.e., combos of parameter values) for the patch
+                            size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
+                            prob = temp_pop[i_patch,]) # probability of each cell being chosen depends on its current abundance)
         Pij[i_patch,,t] <- survivors
       }
       else Pij[i_patch,,t] <- 0L

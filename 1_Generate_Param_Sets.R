@@ -1,8 +1,8 @@
 source('0_Setup.R')
 
 ########## Param set 1: 
-nx <- 20 # size of space in the x dimension
-ny <- 20 # size of space in the y dimension
+nx <- 10 # size of space in the x dimension
+ny <- 10 # size of space in the y dimension
 nsteps <- 10 # timesteps
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take

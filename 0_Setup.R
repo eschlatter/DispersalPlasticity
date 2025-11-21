@@ -11,6 +11,7 @@ library(fields)
 library(Matrix)
 library(bigsparser)
 
+source('RanjansWay.R')
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrix.R')
 source('functions/neutral_landscape.R')

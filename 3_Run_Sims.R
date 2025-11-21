@@ -17,10 +17,15 @@ list2env(pars_save,envir=environment())
 nsteps=300
 patch_locations=NULL
 sim_out <- f_RunMatrix(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,patch_locations = patch_locations, disturb_prob=0.1)
+ranjan_sim <- f_RunMatrixLoop(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL)
+ibm_sim <- f_RunIBM(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad,b_neutral,b_good,K,heatmap_plot_int=5000)
 
 ## plot output
 f_PlotOutput(sim_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
 f_PlotAllHeatmaps(sim_out$sim_melt,sim_out$patch_locations)
 
+f_PlotOutput(ranjan_sim$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+f_PlotAllHeatmaps(ranjan_sim$sim_melt,ranjan_sim$patch_locations)
 
-a <- f_RunMatrixLoop(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL)
+f_PlotOutput(ibm_sim[[2]], kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25))
+

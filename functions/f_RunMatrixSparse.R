@@ -1,4 +1,4 @@
-f_RunMatrix <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,disturb_prob=0,patch_locations=NULL){
+f_RunMatrixSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,disturb_prob=0,patch_locations=NULL){
   starttime <- proc.time()
   
   ########## Data structures to describe space and dispersal ##########

@@ -68,14 +68,14 @@ f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,
   # create full map
   full_map <- base_map
   full_map[which(base_map==TRUE)] <- frac_map[which(base_map==TRUE)]
-
+  
   # put things in the right format for simulation inputs
   patch_locations <- as.data.frame(which(full_map!=0,arr.ind=TRUE)) %>%
     rename(y=row,x=col) %>%
     rowid_to_column(var='id')
   patch_locations$K_i <- round(full_map[full_map!=0])
   K <- patch_locations$K_i
-
+  
   if(plot_flag==TRUE){
     dev.new()
     f_Plot_Landscape(patch_locations,nx,ny)
@@ -89,7 +89,7 @@ f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,
 # takes existing map (patch_locations)
 # or generates uniform grid (if patch_locations==NULL)
 # returns connectivity matrices and related objects for use in simulation
-f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL){
+f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE){
   # list of patch locations and IDs
   # (dimensions: npatch x 3)
   # "location" is the center of the 
@@ -131,11 +131,18 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL){
     } # i_theta
   } # i_alpha
   
+  if(conn_out==TRUE){
+    return(list(patch_locations=patch_locations,
+                patch_map=patch_map,
+                patch_dists=patch_dists,
+                patch_angles=patch_angles,
+                conn_matrices=conn_matrices,
+                npatch=npatch))
+  }  
+  
   return(list(patch_locations=patch_locations,
-              patch_map=patch_map,
               patch_dists=patch_dists,
               patch_angles=patch_angles,
-              conn_matrices=conn_matrices,
               npatch=npatch))
 }
 
@@ -146,4 +153,20 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL){
 # Connectivity[i,j] = the proportion of dispersers from patch j that land in patch i
 f_GetConnectivityMatrix <- function(alpha, theta, patch_dists, patch_angles){
   connectivity_matrix <- (pgamma(patch_dists+0.5,shape=alpha,scale=theta)-pgamma(patch_dists-0.5,shape=alpha,scale=theta))*patch_angles
+}
+
+# inputs:
+#   matrices patch_dists and patch_angles
+#   vectors of patch-specific values of alpha and theta (if scalar, recycled for use across all patches)
+f_GetConnectivityMatrix_vectorized <- function(alpha, theta, patch_dists, patch_angles) {
+  np=nrow(patch_dists)
+  if(length(alpha)==1) alpha <- rep(alpha,np)
+  if(length(theta)==1) theta <- rep(theta,np)
+  # create matrices of alpha and theta of the FROM patch
+  alpha_mat <- matrix(alpha, nrow=np, ncol=np, byrow=FALSE)
+  theta_mat <- matrix(theta, nrow=np, ncol=np, byrow=FALSE)
+  # Compute connectivity (row=FROM patch, col=TO patch)
+  connectivity_matrix <- patch_angles*(pgamma(patch_dists+0.5, shape=alpha_mat, scale=theta_mat)-
+                                         pgamma(patch_dists-0.5, shape=alpha_mat, scale=theta_mat))
+  return(connectivity_matrix)
 }

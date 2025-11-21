@@ -1,9 +1,11 @@
-f_RunMatrixSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,disturb_prob=0,patch_locations=NULL){
+f_RunMatrixSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,b_bad=1,b_neutral=3,b_good=6,K,disturb_prob=0,patch_locations=NULL,seed=NULL){
   starttime <- proc.time()
+  
+  if(!is.null(seed)) set.seed(seed)
   
   ########## Data structures to describe space and dispersal ##########
   # see utility functions/f_MakeHabitat for details on what's in each object
-  hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas,patch_locations)
+  hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas,patch_locations,conn_out=TRUE)
   patch_locations <- hab$patch_locations
   patch_map <- hab$patch_map
   patch_dists <- hab$patch_dists
@@ -192,7 +194,7 @@ f_RunMatrixSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,the
       }
     }
     
-    if(t %% round(nsteps/10) == 0) print(t)
+    if(t %% max(1,round(nsteps/10)) == 0) print(t)
     
   } # t
   

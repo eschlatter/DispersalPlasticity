@@ -29,7 +29,7 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
   Pij <- array(0, dim=c(npatch,ngroups,nsteps))
   # initialize Pij
   start_grp <- which(group_index$alpha==alpha_start & group_index$theta==theta_start & group_index$p==p_start)
-  Pij[,start_grp,1] <- K
+  Pij[,start_grp,1] <- patch_locations$K_i
   
   ## 3. mutation_destinations: for each parameter groups, what parameter groups can a single mutation reach?
   ## dimensions 1 = ngroups, 2 = number of types of mutation events (including no mutation)
@@ -132,6 +132,7 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
   # -------------------------------------------------------------------
   # Output
   # -------------------------------------------------------------------
+  
   return(list(sim_melt=sim_melt,
               by_t=by_t,
               patch_locations=patch_locations,

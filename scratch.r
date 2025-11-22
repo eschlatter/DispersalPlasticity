@@ -7,6 +7,36 @@ source('functions/f_RunMatrixSim.R')
 #source('functions/f_RunMatrixSim2.R')
 source('functions/utility_functions.R')
 
+
+# --------------------------------------------
+# data.table version of post-processing
+sim_melt <- as.table(Pij)
+dimnames(sim_melt) <- list(1:npatch,1:ngroups,1:nsteps)
+sim_melt <- as.data.table(sim_melt)
+setnames(sim_melt, c("patch","group","t","popsize"))
+
+sim_melt[,`:=`(patch = as.numeric(patch),
+               group = as.numeric(group),
+               t = as.numeric(t))]
+sim_melt[,`:=`(alpha = group_index$alpha[group],
+               theta = group_index$theta[group],
+               p = group_index$p[group])]
+sim_melt[,`:=`(alpha_value = v_alphas[alpha],
+               theta_value = v_thetas[theta])]
+
+# mean param values at each timepoint
+# first take the sum across all cells of the param*popsize (numerator of the mean)
+by_t <- summarize(group_by(sim_melt,t),
+                  alpha=sum(alpha_value*popsize),theta=sum(theta_value*popsize),popsize=sum(popsize))
+# then divide by total popsize (denominator of the mean)
+by_t <- mutate(by_t, alpha=alpha/popsize, theta=theta/popsize)
+# --------------------------------------------
+
+
+
+
+
+
 # if(plot_kernel_dynamic==TRUE & t %% round(nsteps/100) == 0){
 #   if(sum(Pij[,t],na.rm=TRUE)>0){
 #     # histogram of kernel means (alpha*theta)

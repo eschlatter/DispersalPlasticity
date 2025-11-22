@@ -57,27 +57,12 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
   ## Precompute connectivity matrices
   ## Incorporates plasticity and K_i -- so needs to change if K_i changes
   all_conn_mats <- vector("list", ngroups)
-  for (g in 1:ngroups) {
-    v <- group_index[g,]
-    # compute effective parameters for each patch with plasticity (once per group)
-    eff_params <- f_plasticityK(patch_locations$K_i, 
-                                v_p[v$p], 
-                                v$alpha, 
-                                v$theta,
-                                n_alpha = length(v_alphas),
-                                n_theta = length(v_thetas))
-    # build matrix
-    conn_mat <- f_GetConnectivityMatrix_vectorized(v_alphas[eff_params$alpha_plastic],
-                                                   v_thetas[eff_params$theta_plastic],patch_dists,patch_angles)
-    all_conn_mats[[g]] <- conn_mat
-  }
-  
   
   # -------------------------------------------------------------------
   # Simulate
   # -------------------------------------------------------------------
   for(t in 2:nsteps){
-    temp_pop[,] <- 0 # reset temp_pop
+    temp_pop[ ] <- 0 # reset temp_pop
     
     ################## Reproduction and Dispersal and Mutation ##################
     
@@ -88,12 +73,11 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
       # get population of each patch for that parameter group
       patch_pops <- Pij[,g,t-1]
       if(sum(patch_pops)>0){
-        # get effective kernel parameters for each origin patch, given plasticity
-        eff_params <- f_plasticityK(patch_locations$K_i,v_p[v$p],v$alpha,v$theta,n_alpha=length(v_alphas),n_theta = length(v_thetas))
         
         # calculate the connectivity matrix among patches, given the group parameter values and patch-level K's
         # (and accounting for the patch population x per capita output b_i from each patch)
-        conn_mat <- all_conn_mats[[g]]
+        if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas) # calculate this matrix, if it hasn't been used before
+        conn_mat <- all_conn_mats[[g]] # otherwise, grab it from the list
         to_patch <- patch_locations$b_i*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
         to_patch_reverse <- patch_pops %*% conn_mat
         
@@ -131,7 +115,7 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
   # melt into a dataframe with columns patch, timestep, alpha, theta, p, popsize
   # add columns for param values at each time/patch/alpha/theta/p combo, scaled by the population size that has that combo
   group_index <- mutate(group_index,group=1:nrow(group_index))
-  sim_melt <- melt(Pij, varnames=c("patch","group",'t'),value.name="popsize") %>%
+  sim_melt <- reshape2::melt(Pij, varnames=c("patch","group",'t'),value.name="popsize") %>%
     left_join(group_index)
   sim_melt <- sim_melt[,c("patch", "t", "alpha", "theta", "p", "popsize")] %>%
     mutate(alpha_value=v_alphas[alpha],theta_value=v_thetas[theta],p_value=v_p[p],t=as.numeric(t))

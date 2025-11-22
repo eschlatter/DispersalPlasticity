@@ -170,3 +170,18 @@ f_GetConnectivityMatrix_vectorized <- function(alpha, theta, patch_dists, patch_
                                          pgamma(patch_dists-0.5, shape=alpha_mat, scale=theta_mat))
   return(connectivity_matrix)
 }
+
+## function to run within f_RunMatrixLoop that gets the plastic connectivity matrix for a given parameter group, g, defined by its index
+f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas){
+  v <- group_index[g,]
+  # compute effective parameters for each patch with plasticity (once per group)
+  eff_params <- f_plasticityK(patch_locations$K_i, 
+                              v_p[v$p], 
+                              v$alpha, 
+                              v$theta,
+                              n_alpha = length(v_alphas),
+                              n_theta = length(v_thetas))
+  # build matrix
+  conn_mat <- f_GetConnectivityMatrix_vectorized(v_alphas[eff_params$alpha_plastic],
+                                                 v_thetas[eff_params$theta_plastic],patch_dists,patch_angles)
+}

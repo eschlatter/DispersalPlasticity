@@ -1,5 +1,7 @@
-f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL,seed=NULL){
+f_RunMatrixLoop <- function(params){
   starttime <- proc.time()
+  
+  list2env(x=params,envir=environment())
   
   if(!is.null(seed)) set.seed(seed)
   
@@ -17,6 +19,7 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
   rm(hab)
   if(!"K_i" %in% colnames(patch_locations)) patch_locations$K_i <- as.vector(K)
   patch_locations$b_i <- as.vector(b)
+  params$patch_locations <- patch_locations
   
   # -------------------------------------------------------------------
   # Data structures to describe population
@@ -37,9 +40,9 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
   ## dimensions 1 = ngroups, 2 = number of types of mutation events (including no mutation)
   # first, list the possible mutations to each parameter
   # (each index represents a mutation event; only one parameter can change per mutation event)
-  alpha_adds=c(0,1,-1,0,0)
-  theta_adds=c(0,0,0,1,-1)
-  p_adds=c(0,0,0,0,0)
+  alpha_adds=c(0,1,-1,0,0,0,0)
+  theta_adds=c(0,0,0,1,-1,0,0)
+  p_adds=c(0,0,0,0,0,1,-1)
   # then make the matrix
   mutation_destinations <- matrix(NA, nrow=ngroups, ncol=length(alpha_adds))
   for(mut_num in 1:length(alpha_adds)) {
@@ -124,30 +127,28 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
     if(t %% max(1,round(nsteps/10)) == 0) print(t)
   }
   
-  # -------------------------------------------------------------------
-  # Process data for output
-  # -------------------------------------------------------------------
-  
+  time_run <- proc.time()-starttime
+  return(list(params=params,Pij=Pij,group_index=group_index,time_run=time_run))
+}
+
+
+
+f_ProcessLoopOutput <- function(params,Pij,group_index,time_run){
+  list2env(x=params,envir=environment())
   # melt into a dataframe with columns patch, timestep, alpha, theta, p, popsize
   # add columns for param values at each time/patch/alpha/theta/p combo, scaled by the population size that has that combo
   group_index <- mutate(group_index,group=1:nrow(group_index))
   sim_melt <- reshape2::melt(Pij, varnames=c("patch","group",'t'),value.name="popsize") %>%
-    left_join(group_index)
+    left_join(group_index,by='group')
   sim_melt <- sim_melt[,c("patch", "t", "alpha", "theta", "p", "popsize")] %>%
     mutate(alpha_value=v_alphas[alpha],theta_value=v_thetas[theta],p_value=v_p[p],t=as.numeric(t))
   
   # mean param values at each timepoint
   # first take the sum across all cells of the param*popsize (numerator of the mean)
   by_t <- summarize(group_by(sim_melt,t),
-                    alpha=sum(alpha_value*popsize),theta=sum(theta_value*popsize),popsize=sum(popsize))
+                    alpha=sum(alpha_value*popsize),theta=sum(theta_value*popsize),p=sum(p_value*popsize),popsize=sum(popsize))
   # then divide by total popsize (denominator of the mean)
-  by_t <- mutate(by_t, alpha=alpha/popsize, theta=theta/popsize)
-  
-  time_run <- proc.time()-starttime
-  
-  # -------------------------------------------------------------------
-  # Output
-  # -------------------------------------------------------------------
+  by_t <- mutate(by_t, alpha=alpha/popsize, theta=theta/popsize, p=p/popsize)
   
   return(list(sim_melt=sim_melt,
               by_t=by_t,
@@ -158,10 +159,53 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
 }
 
 
+f_ProcessLoopOutputDataTable <- function(params,Pij,group_index,time_run){
+  list2env(x=params,envir=environment())
+  npatch <- nrow(patch_locations)
+  ngroups <- nrow(group_index)
+  
+  # melt into a datatable with columns patch, timestep, alpha, theta, p, popsize
+  # add columns for param values at each time/patch/alpha/theta/p combo, scaled by the population size that has that combo
+  sim_melt <- as.table(Pij)
+  dimnames(sim_melt) <- list(1:npatch,1:ngroups,1:nsteps)
+  sim_melt <- as.data.table(sim_melt)
+  setnames(sim_melt, c("patch","group","t","popsize"))
+  
+  sim_melt[,`:=`(patch = as.numeric(patch),
+                 group = as.numeric(group),
+                 t = as.numeric(t))]
+  sim_melt[,`:=`(alpha = group_index$alpha[group],
+                 theta = group_index$theta[group],
+                 p = group_index$p[group])]
+  sim_melt[,`:=`(alpha_value = v_alphas[alpha],
+                 theta_value = v_thetas[theta],
+                 p_value = v_p[p])]
+  
+  # mean param values at each timepoint
+  # first take the sum across all cells of the param*popsize (numerator of the mean)
+  by_t <- sim_melt[,.(alpha=sum(alpha_value*popsize),theta=sum(theta_value*popsize),p=sum(p_value*popsize),popsize=sum(popsize)),by=t]
+  
+  # then divide by total popsize (denominator of the mean)
+  by_t[,`:=`(alpha = alpha/popsize,
+             theta = theta/popsize,
+             p = p/popsize)]
+
+  return(list(sim_melt=sim_melt,
+              by_t=by_t,
+              patch_locations=patch_locations,
+              time_run=time_run,
+              K=K,
+              b=b))
+}
+
+
+
 # second version of this function:
 # calculate each connectivity matrix every time
-f_RunMatrixLoop2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL,seed=NULL){
+f_RunMatrixLoop2 <- function(params){
   starttime <- proc.time()
+  
+  list2env(x=params,envir=environment())
   
   if(!is.null(seed)) set.seed(seed)
   
@@ -174,10 +218,12 @@ f_RunMatrixLoop2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,thet
   patch_locations <- hab$patch_locations
   patch_dists <- hab$patch_dists
   patch_angles <- hab$patch_angles
+  patch_map <- hab$patch_map
   npatch <- hab$npatch
   rm(hab)
   if(!"K_i" %in% colnames(patch_locations)) patch_locations$K_i <- as.vector(K)
   patch_locations$b_i <- as.vector(b)
+  params$patch_locations <- patch_locations
   
   # -------------------------------------------------------------------
   # Data structures to describe population
@@ -198,9 +244,9 @@ f_RunMatrixLoop2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,thet
   ## dimensions 1 = ngroups, 2 = number of types of mutation events (including no mutation)
   # first, list the possible mutations to each parameter
   # (each index represents a mutation event; only one parameter can change per mutation event)
-  alpha_adds=c(0,1,-1,0,0)
-  theta_adds=c(0,0,0,1,-1)
-  p_adds=c(0,0,0,0,0)
+  alpha_adds=c(0,1,-1,0,0,0,0)
+  theta_adds=c(0,0,0,1,-1,0,0)
+  p_adds=c(0,0,0,0,0,1,-1)
   # then make the matrix
   mutation_destinations <- matrix(NA, nrow=ngroups, ncol=length(alpha_adds))
   for(mut_num in 1:length(alpha_adds)) {
@@ -215,7 +261,7 @@ f_RunMatrixLoop2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,thet
   ## 4. Initialize temporary data structures
   temp_pop <- matrix(0,nrow=npatch,ncol=ngroups) # hold intermediate population values for this timestep, before competition
   to_patch <- numeric(npatch) # hold numbers of immigrants to each patch during dispersal
-  
+
   # -------------------------------------------------------------------
   # Simulate
   # -------------------------------------------------------------------
@@ -226,7 +272,9 @@ f_RunMatrixLoop2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,thet
     
     if(t %% 10 == 0){ # disturbances last for 10 timesteps
       # first, reset all K's from any disturbance that occurred 10 timesteps previously
-      patch_locations$K_i <- as.vector(K)
+      if(prod(patch_locations$K_i == as.vector(K))==0){
+        patch_locations$K_i = as.vector(K)
+      }
       
       # then make a new disturbance (maybe)
       if(rbinom(n=1,size=1,p=disturb_prob)==1){
@@ -245,6 +293,7 @@ f_RunMatrixLoop2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,thet
       # get population of each patch for that parameter group
       patch_pops <- Pij[,g,t-1]
       if(sum(patch_pops)>0){
+        
         
         # calculate the connectivity matrix among patches, given the group parameter values and patch-level K's
         # (and accounting for the patch population x per capita output b_i from each patch)
@@ -278,35 +327,6 @@ f_RunMatrixLoop2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,thet
     if(t %% max(1,round(nsteps/10)) == 0) print(t)
   }
   
-  # -------------------------------------------------------------------
-  # Process data for output
-  # -------------------------------------------------------------------
-  
-  # melt into a dataframe with columns patch, timestep, alpha, theta, p, popsize
-  # add columns for param values at each time/patch/alpha/theta/p combo, scaled by the population size that has that combo
-  group_index <- mutate(group_index,group=1:nrow(group_index))
-  sim_melt <- reshape2::melt(Pij, varnames=c("patch","group",'t'),value.name="popsize") %>%
-    left_join(group_index)
-  sim_melt <- sim_melt[,c("patch", "t", "alpha", "theta", "p", "popsize")] %>%
-    mutate(alpha_value=v_alphas[alpha],theta_value=v_thetas[theta],p_value=v_p[p],t=as.numeric(t))
-  
-  # mean param values at each timepoint
-  # first take the sum across all cells of the param*popsize (numerator of the mean)
-  by_t <- summarize(group_by(sim_melt,t),
-                    alpha=sum(alpha_value*popsize),theta=sum(theta_value*popsize),popsize=sum(popsize))
-  # then divide by total popsize (denominator of the mean)
-  by_t <- mutate(by_t, alpha=alpha/popsize, theta=theta/popsize)
-  
   time_run <- proc.time()-starttime
-  
-  # -------------------------------------------------------------------
-  # Output
-  # -------------------------------------------------------------------
-  
-  return(list(sim_melt=sim_melt,
-              by_t=by_t,
-              patch_locations=patch_locations,
-              time_run=time_run,
-              K=K,
-              b=b))
+  return(list(params=params,Pij=Pij,group_index=group_index,time_run=time_run))
 }

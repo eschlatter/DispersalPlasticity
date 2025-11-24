@@ -11,6 +11,7 @@ library(fields)
 library(Matrix)
 library(bigsparser)
 library(rhdf5)
+library(data.table)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSparse.R')

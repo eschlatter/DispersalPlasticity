@@ -178,7 +178,7 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA,replot_data=N
   if(is.null(replot_data)){
     # process data
     alpha_by_patch <- group_by(sim_melt,patch,alpha_value,t) %>%
-      summarize(popsize=sum(popsize),.groups='drop') %>%  # add up what's in the boxes with all values of theta
+      summarize(popsize=sum(popsize),.groups='drop') %>%  # add up what's in the boxes with all values of theta and p
       group_by(patch,t) %>%
       summarize(alpha_m=sum(alpha_value*popsize)/sum(popsize), # at each patch, find the mean and variance of alpha values
                 alpha_v=sum(popsize*(alpha_value-alpha_m)^2)/sum(popsize),
@@ -186,10 +186,18 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA,replot_data=N
       left_join(patch_locations,by=c("patch" = "id"))
     
     theta_by_patch <- group_by(sim_melt,patch,theta_value,t) %>%
-      summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha
+      summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha and p
       group_by(patch,t) %>%
       summarize(theta_m=sum(theta_value*popsize)/sum(popsize),
                 theta_v=sum(popsize*(theta_value-theta_m)^2)/sum(popsize),
+                .groups='drop') %>%
+      left_join(patch_locations,by=c("patch" = "id"))
+    
+    p_by_patch <- group_by(sim_melt,patch,p_value,t) %>%
+      summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha and theta
+      group_by(patch,t) %>%
+      summarize(p_m=sum(p_value*popsize)/sum(popsize),
+                p_v=sum(popsize*(p_value-p_m)^2)/sum(popsize),
                 .groups='drop') %>%
       left_join(patch_locations,by=c("patch" = "id"))
     
@@ -229,6 +237,20 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA,replot_data=N
       coord_fixed()+
       scale_y_reverse()
     
+    plot_p <- filter(p_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=p_m))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()+
+      scale_y_reverse()
+    
+    plot_p_v <- filter(p_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=p_v))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()+
+      scale_y_reverse()
+    
     plot_abund <- filter(pop_by_patch,t==t_i) %>%
       ggplot(aes(x=x-0.5,y=y-0.5,fill=popsize))+
       geom_tile()+
@@ -237,7 +259,7 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA,replot_data=N
       scale_y_reverse()
     
     #grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
-    grid.arrange(plot_alpha, plot_theta, plot_abund, ncol=2,top=paste0('t = ',t_i))
+    grid.arrange(plot_alpha, plot_theta, plot_abund, plot_p, plot_p_v, nrow=2,top=paste0('t = ',t_i))
   }
   replot_data <- list(alpha_by_patch,theta_by_patch,pop_by_patch)
   return(replot_data)
@@ -301,7 +323,7 @@ f_PlotHeatmaps <- function(sim_array_t,patch_locations,t){
 
 ############## quick diagnostic plotting function ##################
 
-f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25){
+f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25,patch_locations=NULL,nx=NULL,ny=NULL){
   p0 <- ggplot(by_t,aes(x=t))+
     geom_line(aes(y=alpha,color='alpha'))+
     geom_line(aes(y=theta,color='theta'))+
@@ -337,7 +359,16 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25){
     theme_minimal()+
     labs(title='population size')
   
-  grid.arrange(p0,p1,p2,p3,nrow=1)
+  p4 <- ggplot(by_t,aes(x=t,y=p))+
+    geom_line()+
+    theme_minimal()+
+    labs(title='plasticity parameter')
+  
+  if(!is.null(patch_locations)){
+    p5 <- f_Plot_Landscape(patch_locations,nx,ny,do_now=FALSE)
+    grid.arrange(p0,p1,p2,p4,p3,p5, nrow=2)    
+  }  
+  else grid.arrange(p0,p1,p2,p4,p3,nrow=2)
 }
 
 f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){
@@ -349,7 +380,7 @@ f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){
   print(g)
 }
 
-f_Plot_Landscape <- function(patch_locations,nx,ny){
+f_Plot_Landscape <- function(patch_locations,nx,ny,do_now=TRUE){
   g <- ggplot(patch_locations,aes(x=x,y=y))+
     geom_tile(aes(fill=K_i))+
     geom_vline(data=data.frame(x=seq(from=0.5,to=nx+0.5,by=1)),aes(xintercept=x),alpha=0.8,color='darkgray')+
@@ -357,5 +388,6 @@ f_Plot_Landscape <- function(patch_locations,nx,ny){
     scale_y_reverse()+
     theme_minimal()+
     labs(title="Carrying capacity (K) by patch")
-  print(g)
+  if(do_now==TRUE) print(g)
+  else return(g)
 }

@@ -5,12 +5,12 @@ f_RunMatrixSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,the
   
   ########## Data structures to describe space and dispersal ##########
   # see utility functions/f_MakeHabitat for details on what's in each object
-  hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas,patch_locations,conn_out=TRUE)
+  hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas,patch_locations,conn_out=FALSE)
   patch_locations <- hab$patch_locations
-  patch_map <- hab$patch_map
+  # patch_map <- hab$patch_map
   patch_dists <- hab$patch_dists
   patch_angles <- hab$patch_angles
-  conn_matrices <- hab$conn_matrices
+  # conn_matrices <- hab$conn_matrices
   npatch <- hab$npatch
   rm(hab)
   if(!"K_i" %in% colnames(patch_locations)) patch_locations$K_i <- as.vector(K)
@@ -74,21 +74,23 @@ f_RunMatrixSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,the
 
     start_phase1 <- proc.time()
     
-    # get effective kernel parameters, given plasticity
-    eff_params <- f_plasticity2(patch_locations$b_i,v_p[v$p],v$alpha,v$theta,b_bad,b_neutral,b_good,n_alpha=length(v_alphas),n_theta = length(v_thetas))
-#    eff_params <- f_plasticityK(as.vector(K),v_p[v$p],v$alpha,v$theta,n_alpha=length(v_alphas),n_theta = length(v_thetas))
-    
-    # patchwise_cmat: a matrix of per-parent larval dispersal rates among patches, specific to the given parameter group
-    # build the matrix one row at a time because each row represents a different origin patch
-    # origin patches may have different patch quality, and therefore different dispersal kernels
-    cmat <- list()
-    for(patch_i in 1:npatch){
-      # dispersal frequency matrix from the origin patch to everywhere
-      # multiplied by b_i to get number of larvae (per adult in origin patch) dispersing from origin patch to everywhere
-      cmat[[patch_i]] <- patch_locations$b_i[patch_i]*conn_matrices[eff_params$alpha_plastic[patch_i],eff_params$theta_plastic[patch_i],,patch_i]
-    }
-    patchwise_cmat <- do.call(rbind,cmat)
-    rm(cmat)
+#     # get effective kernel parameters, given plasticity
+#     eff_params <- f_plasticity2(patch_locations$b_i,v_p[v$p],v$alpha,v$theta,b_bad,b_neutral,b_good,n_alpha=length(v_alphas),n_theta = length(v_thetas))
+# #    eff_params <- f_plasticityK(as.vector(K),v_p[v$p],v$alpha,v$theta,n_alpha=length(v_alphas),n_theta = length(v_thetas))
+# 
+#     # patchwise_cmat: a matrix of per-parent larval dispersal rates among patches, specific to the given parameter group
+#     # build the matrix one row at a time because each row represents a different origin patch
+#     # origin patches may have different patch quality, and therefore different dispersal kernels
+#     cmat <- list()
+#     for(patch_i in 1:npatch){
+#       # dispersal frequency matrix from the origin patch to everywhere
+#       # multiplied by b_i to get number of larvae (per adult in origin patch) dispersing from origin patch to everywhere
+#       cmat[[patch_i]] <- patch_locations$b_i[patch_i]*conn_matrices[eff_params$alpha_plastic[patch_i],eff_params$theta_plastic[patch_i],,patch_i]
+#     }
+#     patchwise_cmat <- do.call(rbind,cmat)
+#     rm(cmat)
+
+    patchwise_cmat <- patch_locations$b_i*f_GetPlasticConnMat(group_row, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas) # calculate the connectivity matrix for this group
     
     phase1_total <- (proc.time()-start_phase1) + phase1_total
     start_phase2 <- proc.time()
@@ -184,14 +186,19 @@ f_RunMatrixSparse <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,the
       patch_abund <- sum(temp_newpop[patch_inds_Pij]) # calculate abundance in the patch
       if(patch_abund>0){ # if abundance is (less than or) equal to 0, the relevant Pij entries for the next timestep are already 0, so we don't need to do anything else
         # choose min(abundance,K) survivors, assigned to parameter values according to the current abundances in those cells
-        survivors <- sample(x=length(patch_inds_Pij), # there are this many cells (i.e., combos of parameter values) for the patch
+        survivors=rmultinom(n=1,
                             size=min(patch_abund,patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
-                            prob = temp_newpop[patch_inds_Pij], # probability of each cell being chosen depends on its current abundance
-                            replace=TRUE) |> # same cell can be chosen by multiple individuals
-          tabulate() # make into a vector with the number of individuals that chose each cell
-        survivors <- c(survivors,rep(0, length(patch_inds_Pij) - length(survivors))) # add zeros to the end for cells past the last one chosen
+                            prob = temp_newpop[patch_inds_Pij]) # probability of each cell being chosen depends on its current abundance)
+        
+        # survivors <- sample(x=length(patch_inds_Pij), # there are this many cells (i.e., combos of parameter values) for the patch
+        #                     size=min(patch_abund,patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
+        #                     prob = temp_newpop[patch_inds_Pij], # probability of each cell being chosen depends on its current abundance
+        #                     replace=TRUE) |> # same cell can be chosen by multiple individuals
+        #   tabulate() # make into a vector with the number of individuals that chose each cell
+        # survivors <- c(survivors,rep(0, length(patch_inds_Pij) - length(survivors))) # add zeros to the end for cells past the last one chosen
         Pij[[t]][patch_inds_Pij] <- survivors # put those surviving larvae in the right place in Pij at the new timestep
       }
+      else Pij[[t]][patch_inds_Pij] <- 0
     }
     
     if(t %% max(1,round(nsteps/10)) == 0) print(t)

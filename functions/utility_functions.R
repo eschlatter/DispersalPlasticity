@@ -124,21 +124,22 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
   # (dimensions: nalpha x ntheta x npatch x npatch)
   # Should we calculate them for each possible kernel up front?
   # There are probably some kernels that won't get used, so this might be a bit wasteful. But, for now, let's do it. We can be more efficient later.
-  conn_matrices <- array(NA,dim=c(length(v_alphas),length(v_thetas),npatch,npatch))
-  for(i_alpha in 1:length(v_alphas)){
-    for(i_theta in 1:length(v_thetas)){
-      conn_matrices[i_alpha,i_theta,,] <- f_GetConnectivityMatrix(v_alphas[i_alpha],v_thetas[i_theta],patch_dists,patch_angles)
-    } # i_theta
-  } # i_alpha
-  
   if(conn_out==TRUE){
+    conn_matrices <- array(NA,dim=c(length(v_alphas),length(v_thetas),npatch,npatch))
+    for(i_alpha in 1:length(v_alphas)){
+      for(i_theta in 1:length(v_thetas)){
+        conn_matrices[i_alpha,i_theta,,] <- f_GetConnectivityMatrix(v_alphas[i_alpha],v_thetas[i_theta],patch_dists,patch_angles)
+      } # i_theta
+    } # i_alpha
+    
     return(list(patch_locations=patch_locations,
                 patch_map=patch_map,
                 patch_dists=patch_dists,
                 patch_angles=patch_angles,
                 conn_matrices=conn_matrices,
                 npatch=npatch))
-  }  
+    
+  }
   
   return(list(patch_locations=patch_locations,
               patch_dists=patch_dists,

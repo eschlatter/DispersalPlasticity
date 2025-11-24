@@ -12,6 +12,7 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
   patch_locations <- hab$patch_locations
   patch_dists <- hab$patch_dists
   patch_angles <- hab$patch_angles
+  patch_map <- hab$patch_map
   npatch <- hab$npatch
   rm(hab)
   if(!"K_i" %in% colnames(patch_locations)) patch_locations$K_i <- as.vector(K)
@@ -60,6 +61,25 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
   # -------------------------------------------------------------------
   for(t in 2:nsteps){
     temp_pop[ ] <- 0 # reset temp_pop
+    
+    ################## Disturbance ##################
+    
+    if(t %% 10 == 0){ # disturbances last for 10 timesteps
+      # first, reset all K's from any disturbance that occurred 10 timesteps previously
+      if(prod(patch_locations$K_i == as.vector(K))==0){
+        patch_locations$K_i = as.vector(K)
+        all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K_i
+      }
+      
+      # then make a new disturbance (maybe)
+      if(rbinom(n=1,size=1,p=disturb_prob)==1){
+        all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K_i
+        
+        disturb <- ideal.map(ny, nx, p = 0.2, nshape = 1, type = "circle", maxval = 1, minval = 0, binmap = TRUE, rasterflag = FALSE, plotflag=FALSE)
+        disturb_patches <- as.numeric(na.omit(patch_map[disturb!=0]))
+        patch_locations$K_i[disturb_patches] <- 0
+      }
+    }
     
     ################## Reproduction and Dispersal and Mutation ##################
     
@@ -138,6 +158,7 @@ f_RunMatrixLoop <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta
 }
 
 
+# second version of this function:
 # calculate each connectivity matrix every time
 f_RunMatrixLoop2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL,seed=NULL){
   starttime <- proc.time()
@@ -200,6 +221,20 @@ f_RunMatrixLoop2 <- function(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,thet
   # -------------------------------------------------------------------
   for(t in 2:nsteps){
     temp_pop[ ] <- 0 # reset temp_pop
+    
+    ################## Disturbance ##################
+    
+    if(t %% 10 == 0){ # disturbances last for 10 timesteps
+      # first, reset all K's from any disturbance that occurred 10 timesteps previously
+      patch_locations$K_i <- as.vector(K)
+      
+      # then make a new disturbance (maybe)
+      if(rbinom(n=1,size=1,p=disturb_prob)==1){
+        disturb <- ideal.map(ny, nx, p = 0.2, nshape = 1, type = "circle", maxval = 1, minval = 0, binmap = TRUE, rasterflag = FALSE, plotflag=FALSE)
+        disturb_patches <- as.numeric(na.omit(patch_map[disturb!=0]))
+        patch_locations$K_i[disturb_patches] <- 0
+      }
+    }
     
     ################## Reproduction and Dispersal and Mutation ##################
     

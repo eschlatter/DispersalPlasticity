@@ -142,6 +142,7 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
   }
   
   return(list(patch_locations=patch_locations,
+              patch_map=patch_map,
               patch_dists=patch_dists,
               patch_angles=patch_angles,
               npatch=npatch))

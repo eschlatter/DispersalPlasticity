@@ -1,9 +1,13 @@
 ## run the model
 source('1_Generate_Param_Sets.R')
-sim_loop <- f_RunMatrixLoop2(params)
+sim_loop1 <- f_RunMatrixLoop(params)
+sim_loop2 <- f_RunMatrixLoop3(params)
+all.equal(sim_loop1$Pij,sim_loop2$Pij)
+
 # save(sim_loop,file='nx50.RData')
 # load(file='nx50.RData')
-sim_loop_out <- f_ProcessLoopOutputDataTable(sim_loop$params,sim_loop$Pij,sim_loop$group_index, sim_loop$time_run)
+sim_loop_out1 <- f_ProcessLoopOutputDataTable(sim_loop1$params,sim_loop1$Pij,sim_loop1$group_index, sim_loop1$time_run)
+sim_loop_out2 <- f_ProcessLoopOutputDataTable(sim_loop2$params,sim_loop2$Pij,sim_loop2$group_index, sim_loop2$time_run)
 
 # ## other versions
 # sim_loop_new <- f_RunMatrixLoopNew(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL, seed=40,file_out="model_runs/20251121_1.h5")
@@ -14,7 +18,10 @@ sim_loop_out <- f_ProcessLoopOutputDataTable(sim_loop$params,sim_loop$Pij,sim_lo
 # all.equal(sim_loop_out$by_t,sim_loop_out2$by_t)
 
 ## plot output
-f_PlotOutput(sim_loop_out$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25),patch_locations=sim_loop_out$patch_locations,nx=params$nx,ny=params$ny)
+f_PlotOutput(sim_loop_out1$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25),patch_locations=sim_loop_out1$patch_locations,nx=params$nx,ny=params$ny)
+f_PlotOutput(sim_loop_out2$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25),patch_locations=sim_loop_out2$patch_locations,nx=params$nx,ny=params$ny)
+
+
 f_PlotAllHeatmaps(sim_loop_out$sim_melt,sim_loop_out$patch_locations)
 
 ## time profile

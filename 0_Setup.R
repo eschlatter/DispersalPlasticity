@@ -12,6 +12,7 @@ library(Matrix)
 library(bigsparser)
 library(rhdf5)
 library(data.table)
+library(parallel)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSparse.R')

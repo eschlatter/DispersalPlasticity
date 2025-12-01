@@ -1,3 +1,26 @@
+# takes a dataframe sim_df (could be sim_melt or a subset of it, plus K) with columns popsize, alpha, theta, p_value, K, x, y
+# plots the effective kernels (considering plasticity), with the thickness of the kernel line indicating abundance of that kernel in the dataset
+f_PlotEffectiveKernels <- function(sim_df,v_alphas,v_thetas,patch_locations,plot_title=NULL){
+  eff_pars <- f_plasticityK_new(K=sim_df$K,p=sim_df$p,alpha=sim_df$alpha,theta=sim_df$theta,n_alpha=length(v_alphas),n_theta=length(v_thetas),Kmin=min(patch_locations$K_i),Kmax=max(patch_locations$K_i))
+  sim_df <- cbind(sim_df,eff_pars) 
+  
+  sim_df <- sim_df %>%
+    group_by(alpha_plastic,theta_plastic) %>%
+    summarize(abund=sum(popsize)) %>%
+    ungroup()
+  
+  sim_df <- mutate(sim_df,abund_scale=(abund/max(abund))+.2)
+  
+  ggplot()+
+    xlim(1,20)+
+    lapply(1:nrow(sim_df), 
+           function(i){geom_function(fun=dgamma,
+                                     args=list(shape=sim_df$alpha_plastic[i],scale=sim_df$theta_plastic[i]),
+                                     lwd=sim_df$abund_scale[i])} )+
+    theme_minimal()+
+    labs(x='distance',y='density',title=plot_title)
+}
+
 ############## after-the-fact heatmap function for IBM ###############
 # inputs:
 #   pop: population dataframe for the current timestep

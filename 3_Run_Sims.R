@@ -1,13 +1,15 @@
 ## run the model
-source('1_Generate_Param_Sets.R')
+source('0_Setup.R')
+load('params/ParSet3.RData')
+list2env(x=params,envir=environment())
 sim_loop1 <- f_RunMatrixLoop(params)
-sim_loop2 <- f_RunMatrixLoop3(params)
-all.equal(sim_loop1$Pij,sim_loop2$Pij)
+# sim_loop2 <- f_RunMatrixLoop2(params)
+# all.equal(sim_loop1$Pij,sim_loop2$Pij)
 
-# save(sim_loop,file='nx50.RData')
-# load(file='nx50.RData')
-sim_loop_out1 <- f_ProcessLoopOutputDataTable(sim_loop1$params,sim_loop1$Pij,sim_loop1$group_index, sim_loop1$time_run)
-sim_loop_out2 <- f_ProcessLoopOutputDataTable(sim_loop2$params,sim_loop2$Pij,sim_loop2$group_index, sim_loop2$time_run)
+save(sim_loop1,file='UniformK.RData')
+load(file='UniformK.RData')
+sim_loop_out1 <- f_ProcessLoopOutputDataTable(sim_loop1$params,sim_loop1$Pij[,,10000,drop=FALSE],sim_loop1$group_index, sim_loop1$time_run)
+# sim_loop_out2 <- f_ProcessLoopOutputDataTable(sim_loop2$params,sim_loop2$Pij,sim_loop2$group_index, sim_loop2$time_run)
 
 # ## other versions
 # sim_loop_new <- f_RunMatrixLoopNew(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL, seed=40,file_out="model_runs/20251121_1.h5")
@@ -19,20 +21,18 @@ sim_loop_out2 <- f_ProcessLoopOutputDataTable(sim_loop2$params,sim_loop2$Pij,sim
 
 ## plot output
 f_PlotOutput(sim_loop_out1$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25),patch_locations=sim_loop_out1$patch_locations,nx=params$nx,ny=params$ny)
-f_PlotOutput(sim_loop_out2$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25),patch_locations=sim_loop_out2$patch_locations,nx=params$nx,ny=params$ny)
+# f_PlotOutput(sim_loop_out2$by_t, kern_timesteps=seq(from=0.75*nsteps,to=nsteps,length.out=25),patch_locations=sim_loop_out2$patch_locations,nx=params$nx,ny=params$ny)
+f_PlotAllHeatmaps(sim_loop_out1$sim_melt,sim_loop_out1$patch_locations,plot_int=nsteps)
 
-
-f_PlotAllHeatmaps(sim_loop_out$sim_melt,sim_loop_out$patch_locations)
-
-## time profile
-Rprof(filename='profile_loop.out')
-sim_loop <- f_RunMatrixLoop(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL, seed=NULL)
-Rprof(NULL)
-summaryRprof('profile_loop.out')
-
-
-## memory profile
-Rprofmem(filename='profile_loop.out',threshold=10000)
-sim_loop <- f_RunMatrixLoop(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL, seed=NULL)
-Rprofmem(NULL)
-noquote(readLines("profile_loop.out"))
+# ## time profile
+# Rprof(filename='profile_loop.out')
+# sim_loop <- f_RunMatrixLoop(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL, seed=NULL)
+# Rprof(NULL)
+# summaryRprof('profile_loop.out')
+# 
+# 
+# ## memory profile
+# Rprofmem(filename='profile_loop.out',threshold=10000)
+# sim_loop <- f_RunMatrixLoop(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL, seed=NULL)
+# Rprofmem(NULL)
+# noquote(readLines("profile_loop.out"))

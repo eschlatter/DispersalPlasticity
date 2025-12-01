@@ -36,6 +36,20 @@ f_plasticityK <- function(K_i, p, alpha, theta, n_alpha=5, n_theta=5){
   return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
 }
 
+## improve the plasticity function
+## it should still take vectors of values for K, p, alpha, and theta. 
+f_plasticityK_new <- function(K, p, alpha, theta, n_alpha=5, n_theta=5, Kmin=NULL, Kmax=NULL){
+  if(is.null(Kmin)) Kmin=min(K)
+  if(is.null(Kmax)) Kmax=max(K)
+  if(Kmin==Kmax) alpha_plastic <- alpha
+  else {
+    alpha_add <- round(ifelse(K<Kmin,p,ifelse(K>Kmax,-p,p - 2*p*(K-Kmin)/(Kmax-Kmin))))
+    alpha_plastic <- oob_squish(alpha+alpha_add, c(1,n_alpha))
+  }
+  theta_plastic <- theta
+  return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
+}
+
 # Inputs:
 #   base_map: a matrix representing habitat configuration (0=open ocean, 1=reef)
 #   if no base map is provided, specify:
@@ -177,7 +191,7 @@ f_GetConnectivityMatrix_vectorized <- function(alpha, theta, patch_dists, patch_
 f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas){
   v <- group_index[g,]
   # compute effective parameters for each patch with plasticity (once per group)
-  eff_params <- f_plasticityK(patch_locations$K_i, 
+  eff_params <- f_plasticityK_new(patch_locations$K_i, 
                               v_p[v$p], 
                               v$alpha, 
                               v$theta,

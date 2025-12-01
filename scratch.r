@@ -9,6 +9,44 @@ source('functions/utility_functions.R')
 
 
 # --------------------------------------------
+# check out plasticity function
+f_PlasticityBase <- function(K,Kmin,Kmax,p){
+  y <- round(ifelse(K<Kmin,p,ifelse(K>Kmax,-p,p - 2*p*(K-Kmin)/(Kmax-Kmin))))
+}
+
+K=1:10
+Kmin=3
+Kmax=7
+p=1
+plot(K,f_PlasticityBase(K,Kmin,Kmax,p),type='o')
+abline(v=Kmin)
+abline(v=Kmax)
+# --------------------------------------------
+
+
+
+# --------------------------------------------
+
+sim_melt_t <- filter(sim_loop_out1$sim_melt,t==1000)
+sim_melt_t$K <- patch_locations$K_i[sim_melt_t$patch]
+sim_melt_t$x <- patch_locations$x[sim_melt_t$patch]
+sim_melt_t$y <- patch_locations$y[sim_melt_t$patch]
+
+island_only <- filter(sim_melt_t,x<9 & y>17 & y<28,popsize>0)
+mid_mainland <- filter(sim_melt_t,x<28 & x>10 & y>15,popsize>0)
+
+# island_only <- filter(sim_melt_t,x<15 & y>20, popsize>0)
+# mid_mainland <- filter(sim_melt_t,x<15 & y<20,popsize>0)
+
+f_PlotEffectiveKernels(island_only,v_alphas,v_thetas,patch_locations, plot_title="island only")
+f_PlotEffectiveKernels(mid_mainland,v_alphas,v_thetas,patch_locations,plot_title="mid_mainland")
+# --------------------------------------------
+
+
+
+
+
+# --------------------------------------------
 # data.table version of post-processing
 sim_melt <- as.table(Pij)
 dimnames(sim_melt) <- list(1:npatch,1:ngroups,1:nsteps)

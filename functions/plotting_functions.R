@@ -1,19 +1,11 @@
-# takes a dataframe sim_df (should be sim_melt output from ProcessLoopOutput function)
+# takes a dataframe sim_df (should be sim_melt, joined with patch_locations)
 # plots the effective kernels (considering plasticity), with the thickness of the kernel line indicating abundance of that kernel in the dataset
 f_PlotEffectiveKernels <- function(sim_df,v_alphas,v_thetas,patch_locations,plot_title=NULL){
-  sim_df$K <- patch_locations$K_i[sim_df$patch]
-  sim_df$x <- patch_locations$x[sim_df$patch]
-  sim_df$y <- patch_locations$y[sim_df$patch]
-  
   eff_pars <- f_plasticityK_new(K=sim_df$K,p=sim_df$p,alpha=sim_df$alpha,theta=sim_df$theta,n_alpha=length(v_alphas),n_theta=length(v_thetas),Kmin=min(patch_locations$K_i),Kmax=max(patch_locations$K_i))
   sim_df <- cbind(sim_df,eff_pars) 
   
-  sim_df <- sim_df %>%
-    group_by(alpha_plastic,theta_plastic) %>%
-    summarize(abund=sum(popsize)) %>%
-    ungroup()
-  
-  sim_df <- mutate(sim_df,abund_scale=(abund/max(abund))+.1)
+  sim_df <- sim_df[,.(abund=sum(popsize)),by=c("alpha_plastic,theta_plastic")]
+  sim_df <- sim_df[,abund_scale := (abund/max(abund))+.05]
   
   ggplot()+
     xlim(0,20)+
@@ -24,6 +16,30 @@ f_PlotEffectiveKernels <- function(sim_df,v_alphas,v_thetas,patch_locations,plot
                                      color='blue')} )+
     theme_minimal()+
     labs(x='distance',y='density',title=plot_title)
+}
+
+# takes a dataframe sim_df (should be sim_melt, joined with patch_locations)
+# plots the effective kernels (considering plasticity), with the thickness of the kernel line indicating abundance of that kernel in the dataset
+f_PlotKernels <- function(sim_df,v_alphas,v_thetas,patch_locations,plot_title=NULL,effective=TRUE){
+  p_input <- ifelse(effective==TRUE,sim_df$p,rep(0,times=nrow(sim_df))) # if effective==FALSE, then we set p=0, so the "effective" parameters are just alpha and theta
+  eff_pars <- f_plasticityK_new(K=sim_df$K,p=p_input,alpha=sim_df$alpha,theta=sim_df$theta,n_alpha=length(v_alphas),n_theta=length(v_thetas),Kmin=min(patch_locations$K_i),Kmax=max(patch_locations$K_i))
+  sim_df <- cbind(sim_df,eff_pars) 
+  
+  sim_df <- sim_df[,.(abund=sum(popsize)),by=c("alpha_plastic,theta_plastic")]
+  sim_df <- sim_df[,abund_scale := (abund/max(abund))+.05]
+  
+  ggplot()+
+    xlim(0,20)+
+    ylim(0,1)+
+    lapply(1:nrow(sim_df), 
+           function(i){geom_function(fun=dgamma,
+                                     args=list(shape=sim_df$alpha_plastic[i],scale=sim_df$theta_plastic[i]),
+                                     lwd=sim_df$abund_scale[i],
+                                     color=ifelse(effective==TRUE,'blue','black')
+           )
+           } )+
+    theme_minimal()+
+    labs(x='distance',y='density',title=paste0(ifelse(effective==TRUE,"Effective ",""),"Kernels",plot_title))
 }
 
 ############## after-the-fact heatmap function for IBM ###############
@@ -190,10 +206,107 @@ f_PlotBubbleMatrix <- function(sim_melt,patch_locations,plot_int=NA){
   }
 }
 
+############## after-the-fact heatmap function for matrix model: data.table version ##################
+# inputs:
+#   replot_data: if it's been done before for this sim, can reuse the processed data from last time
+#   sim_melt: dataframe with columns patch, timestep, alpha, theta, p, popsize
+#   patch_locations for mapmaking
+#   plot_int: specify timesteps to plot
+f_PlotAllHeatmapsDataTable <- function(sim_melt,patch_locations,plot_int=NA,replot_data=NULL){
+  if(prod(is.na(plot_int))==1){
+    plot_int <- round(max(sim_melt$t)/10) # set the plotting interval, unless specified
+    plot_ints <- seq(from=plot_int,to=max(sim_melt$t),by=plot_int)
+  } 
+  else plot_ints <- plot_int
+  
+  if(is.null(replot_data)){
+    # process data
+    # alpha
+    alpha_by_patch <- sim_melt[,.(popsize=sum(popsize)),by=c("patch","alpha_value","t")]
+    alpha_by_patch <- alpha_by_patch[,.(alpha_m=sum(alpha_value*popsize)/sum(popsize),
+                                        alpha_v=sum(popsize*(alpha_value-(sum(alpha_value*popsize)/sum(popsize)))^2)/sum(popsize)),by=c("patch","t")]
+    alpha_by_patch <- alpha_by_patch[patch_locations,on=c(patch="id")]
+    
+    # theta
+    theta_by_patch <- sim_melt[,.(popsize=sum(popsize)),by=c("patch","theta_value","t")]
+    theta_by_patch <- theta_by_patch[,.(theta_m=sum(theta_value*popsize)/sum(popsize),
+                                        theta_v=sum(popsize*(theta_value-(sum(theta_value*popsize)/sum(popsize)))^2)/sum(popsize)),by=c("patch","t")]
+    theta_by_patch <- theta_by_patch[patch_locations,on=c(patch="id")]
+    
+    # p
+    p_by_patch <- sim_melt[,.(popsize=sum(popsize)),by=c("patch","p_value","t")]
+    p_by_patch <- p_by_patch[,.(p_m=sum(p_value*popsize)/sum(popsize),
+                                p_v=sum(popsize*(p_value-(sum(p_value*popsize)/sum(popsize)))^2)/sum(popsize)),by=c("patch","t")]
+    p_by_patch <- p_by_patch[patch_locations,on=c(patch="id")]
+    
+    # abundance
+    pop_by_patch <- sim_melt[,.(popsize=sum(popsize)),by=c("patch","t")]
+    pop_by_patch <- pop_by_patch[patch_locations,on=c(patch="id")]
+  }
+  else list2env(replot_data,envir=environment()) 
+  
+  ## make plots
+  for(t_i in plot_ints){
+    plot_alpha <- filter(alpha_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_m))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()+
+      scale_y_reverse()
+    
+    plot_alpha_v <- filter(alpha_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_v))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()+
+      scale_y_reverse()
+    
+    plot_theta <- filter(theta_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_m))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()+
+      scale_y_reverse()
+    
+    plot_theta_v <- filter(theta_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_v))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()+
+      scale_y_reverse()
+    
+    plot_p <- filter(p_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=p_m))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()+
+      scale_y_reverse()
+    
+    plot_p_v <- filter(p_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=p_v))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()+
+      scale_y_reverse()
+    
+    plot_abund <- filter(pop_by_patch,t==t_i) %>%
+      ggplot(aes(x=x-0.5,y=y-0.5,fill=popsize))+
+      geom_tile()+
+      labs(x='x',y='y')+
+      coord_fixed()+
+      scale_y_reverse()
+    
+    #grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
+    grid.arrange(plot_alpha, plot_theta, plot_abund, plot_p, plot_p_v, nrow=2,top=paste0('t = ',t_i))
+  }
+  replot_data <- list(alpha_by_patch=alpha_by_patch,theta_by_patch=theta_by_patch,p_by_patch=p_by_patch,pop_by_patch=pop_by_patch)
+  return(replot_data)
+}
+
 ############## after-the-fact heatmap function for matrix model ##################
 # inputs:
 #   replot_data: if it's been done before for this sim, can reuse the processed data from last time
-#   sim_array_t: just the portion of sim_array from timestep t
+#   sim_melt: dataframe with columns patch, timestep, alpha, theta, p, popsize
 #   patch_locations for mapmaking
 #   plot_int: specify timesteps to plot
 f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA,replot_data=NULL){
@@ -289,7 +402,7 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA,replot_data=N
     #grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
     grid.arrange(plot_alpha, plot_theta, plot_abund, plot_p, plot_p_v, nrow=2,top=paste0('t = ',t_i))
   }
-  replot_data <- list(alpha_by_patch,theta_by_patch,pop_by_patch)
+  replot_data <- list(alpha_by_patch=alpha_by_patch,theta_by_patch=theta_by_patch,p_by_patch=p_by_patch,pop_by_patch=pop_by_patch)
   return(replot_data)
 }
 
@@ -398,10 +511,11 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=20,patch_locations=NULL,n
   else p5 <- NULL
   
   if(!is.null(sim_melt)){
-    sim_melt$x <- patch_locations$x[sim_melt$patch]
-    sim_melt$y <- patch_locations$y[sim_melt$patch]
+    # make a dataframe to give to f_PlotEffectiveKernels
+    sim_df <- sim_melt[patch_locations,on=c(patch="id")] # join sim_melt and patch_locations
+    sim_df <- sim_df[sim_df$popsize!=0,] # remove zero rows
+    sim_df <- sim_df[(sim_df$t %in% kern_timesteps),] # choose only needed timesteps
     
-    sim_df <- sim_melt[(sim_melt$t %in% kern_timesteps),]
     p6 <- f_PlotEffectiveKernels(sim_df,v_alphas,v_thetas,patch_locations,plot_title="Effective kernels, all patches")
     
     sim_df_island <- sim_df[(sim_df$x<15),]
@@ -425,6 +539,123 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=20,patch_locations=NULL,n
   } 
   
   grid.arrange(p0,p1,p2,p4,p3,p5,p6,p7,p8,p9,ncol=3)
+}
+
+############## diagnostic plotting function, reworked ##################
+
+f_PlotOutputNew <- function(by_t,kern_timesteps=NULL,kern_xlim=20,patch_locations=NULL,nx=NULL,ny=NULL,sim_melt=NULL,
+                            island_lims,mainland_lims){
+  # if not specified, pick a reasonable sample of the ending timesteps to calculate patchwise kernels from
+  if(is.null(kern_timesteps)) kern_timesteps=seq(from=round(0.75*nrow(by_t)), to=nrow(by_t),length.out=25)
+  
+  # make a dataframe to give to f_PlotEffectiveKernels
+  sim_df <- sim_melt[patch_locations,on=c(patch="id")] # join sim_melt and patch_locations
+  sim_df <- sim_df[sim_df$popsize!=0,] # remove zero rows
+  
+  # Page 1
+  #-----------------------------
+  # K across the seascape
+  p1 <- f_Plot_Landscape(patch_locations,nx,ny,do_now=FALSE)
+  dev.new(width=2,height=2,units="in")
+  print(p1)
+  
+  # Pop size over time
+  p2 <- ggplot(by_t,aes(x=t,y=popsize))+
+    geom_line()+
+    theme_minimal()+
+    labs(title='population size')
+  
+  # By-patch pop size at the end of the sim
+  sim_df_last <- sim_df[(sim_df$t==nsteps),]
+  sim_df_last <- sim_df_last[,.(abund=sum(popsize),x=first(x),y=first(y)),by=patch]
+  p3 <- ggplot(sim_df_last)+
+    geom_tile(aes(x=x,y=y,fill=abund))+
+    scale_y_reverse()+
+    labs(title=paste0("End population size, t=",nsteps))
+  
+  # traces of kernel parameters
+  p4 <- ggplot(by_t,aes(x=t))+
+    geom_line(aes(y=alpha,color='alpha'))+
+    geom_line(aes(y=theta,color='theta'))+
+    labs(title='kernel parameters',y='value')+
+    theme_minimal()+
+    theme(legend.position = 'inside')
+  
+  # kernel parameters in alpha-theta space
+  fill_colors <- c("First" = "white", "Last" = "red")
+  outline_colors <- c("First" = "red", "Last" = "red")
+  p5 <- ggplot(by_t,aes(x=alpha,y=theta))+
+    geom_path(alpha=0.75,lwd=0.25)+
+    theme_minimal()+
+    geom_point(data=first(by_t),aes(x=alpha,y=theta,color="First",fill="First"),pch=21)+
+    geom_point(data=last(by_t),aes(x=alpha,y=theta,color="Last",fill="Last"),pch=21)+
+    scale_color_manual(name = "Point", values=outline_colors)+
+    scale_fill_manual(name = "Point", values=fill_colors)+
+    labs(title='kernel parameters')+
+    theme(legend.position = 'inside')
+  
+  # trace of plasticity parameter
+  p6 <- ggplot(by_t,aes(x=t,y=p))+
+    geom_line()+
+    theme_minimal()+
+    labs(title='plasticity parameter')
+  
+  a <- dev.list()
+  dev.set(which=as.numeric(a['RStudioGD']))
+  grid.arrange(p1,p2,p3,p4,p5,p6,ncol=3)
+  
+  # Page 2
+  #-----------------------------
+  # prep sim_df for by-patch stuff
+  sim_df_start <- sim_df[(sim_df$t==1),]
+  sim_df <- sim_df[(sim_df$t %in% kern_timesteps),] # choose only needed timesteps
+  sim_df_island <- sim_df[(sim_df$x %in% island_lims$xmin:island_lims$xmax) & (sim_df$y %in% island_lims$ymin:island_lims$ymax),]
+  sim_df_mainland <- sim_df[(sim_df$x %in% mainland_lims$xmin:mainland_lims$xmax) & (sim_df$y %in% mainland_lims$ymin:mainland_lims$ymax),]
+  
+  
+  ## Non-effective kernels (actual parameter values)
+  # starting
+  p7 <- f_PlotKernels(sim_df=sim_df_start,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                      plot_title="\nAll patches \nt=1",effective=FALSE)
+  
+  # all
+  p8 <- f_PlotKernels(sim_df=sim_df,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                      plot_title=paste0("\nAll patches \nt=",min(kern_timesteps),"-",max(kern_timesteps)),effective=FALSE)
+  
+  # island
+  p9 <- f_PlotKernels(sim_df=sim_df_island,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                      plot_title=paste0("\nIsland \nt=",min(kern_timesteps),"-",max(kern_timesteps)),effective=FALSE)
+  # mainland
+  p10 <- f_PlotKernels(sim_df=sim_df_mainland,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                       plot_title=paste0("\nMainland \nt=",min(kern_timesteps),"-",max(kern_timesteps)),effective=FALSE)
+  
+  ## Effective kernels
+  # starting
+  p11 <- f_PlotKernels(sim_df=sim_df_start,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                       plot_title="\nAll patches \nt=1",effective=TRUE)
+  # all
+  p12 <- f_PlotKernels(sim_df=sim_df,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                       plot_title=paste0("\nAll patches \nt=",min(kern_timesteps),"-",max(kern_timesteps)),effective=TRUE)
+  
+  # island
+  p13 <- f_PlotKernels(sim_df=sim_df_island,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                       plot_title=paste0("\nIsland \nt=",min(kern_timesteps),"-",max(kern_timesteps)),effective=TRUE)
+  # mainland
+  p14 <- f_PlotKernels(sim_df=sim_df_mainland,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                       plot_title=paste0("\nMainland \nt=",min(kern_timesteps),"-",max(kern_timesteps)),effective=TRUE)
+  
+  patch_locations$whichland <- ifelse((patch_locations$x %in% island_lims$xmin:island_lims$xmax) & (patch_locations$y %in% island_lims$ymin:island_lims$ymax),
+                                      "island",ifelse((patch_locations$x %in% mainland_lims$xmin:mainland_lims$xmax) & (patch_locations$y %in% mainland_lims$ymin:mainland_lims$ymax),
+                                                      "mainland","neither"))
+  p15 <- ggplot(patch_locations)+
+    geom_tile(aes(x=x,y=y,fill=whichland))+
+    scale_y_reverse()+
+    theme_minimal()
+  
+  grid.arrange(p7,p8,p9,p10,p11,p12,p13,p14,ncol=4)
+  
+  print(p15)
+  
 }
 
 f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){

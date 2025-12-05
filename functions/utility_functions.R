@@ -38,6 +38,7 @@ f_plasticityK <- function(K_i, p, alpha, theta, n_alpha=5, n_theta=5){
 
 ## improve the plasticity function
 ## it still takes vectors of values for K, p, alpha, and theta. 
+## p should be the actual value of p; alpha and theta should be indices in v_alpha and v_theta
 f_plasticityK_new <- function(K, p, alpha, theta, n_alpha=5, n_theta=5, Kmin=NULL, Kmax=NULL){
   if(is.null(Kmin)) Kmin=min(K)
   if(is.null(Kmax)) Kmax=max(K)

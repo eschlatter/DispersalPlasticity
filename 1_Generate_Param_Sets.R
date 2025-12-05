@@ -55,6 +55,7 @@ params <- list(nx=nx,ny=ny,nsteps=nsteps,
                v_alphas=v_alphas,v_thetas=v_thetas,v_p=v_p,
                alpha_start=alpha_start,theta_start=theta_start,p_start=p_start,
                mu=mu,b=b,K=K,
+               island_lims=island_lims, mainland_lims=mainland_lims,
                disturb_prob=0,patch_locations=patch_locations,seed=NULL)
 
 #save(params,file='params/VariableKPars.RData')

@@ -1,6 +1,10 @@
-# takes a dataframe sim_df (could be sim_melt or a subset of it, plus K) with columns popsize, alpha, theta, p_value, K, x, y
+# takes a dataframe sim_df (should be sim_melt output from ProcessLoopOutput function)
 # plots the effective kernels (considering plasticity), with the thickness of the kernel line indicating abundance of that kernel in the dataset
 f_PlotEffectiveKernels <- function(sim_df,v_alphas,v_thetas,patch_locations,plot_title=NULL){
+  sim_df$K <- patch_locations$K_i[sim_df$patch]
+  sim_df$x <- patch_locations$x[sim_df$patch]
+  sim_df$y <- patch_locations$y[sim_df$patch]
+  
   eff_pars <- f_plasticityK_new(K=sim_df$K,p=sim_df$p,alpha=sim_df$alpha,theta=sim_df$theta,n_alpha=length(v_alphas),n_theta=length(v_thetas),Kmin=min(patch_locations$K_i),Kmax=max(patch_locations$K_i))
   sim_df <- cbind(sim_df,eff_pars) 
   
@@ -9,14 +13,15 @@ f_PlotEffectiveKernels <- function(sim_df,v_alphas,v_thetas,patch_locations,plot
     summarize(abund=sum(popsize)) %>%
     ungroup()
   
-  sim_df <- mutate(sim_df,abund_scale=(abund/max(abund))+.2)
+  sim_df <- mutate(sim_df,abund_scale=(abund/max(abund))+.1)
   
   ggplot()+
-    xlim(1,20)+
+    xlim(0,20)+
     lapply(1:nrow(sim_df), 
            function(i){geom_function(fun=dgamma,
                                      args=list(shape=sim_df$alpha_plastic[i],scale=sim_df$theta_plastic[i]),
-                                     lwd=sim_df$abund_scale[i])} )+
+                                     lwd=sim_df$abund_scale[i],
+                                     color='blue')} )+
     theme_minimal()+
     labs(x='distance',y='density',title=plot_title)
 }
@@ -346,13 +351,13 @@ f_PlotHeatmaps <- function(sim_array_t,patch_locations,t){
 
 ############## quick diagnostic plotting function ##################
 
-f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25,patch_locations=NULL,nx=NULL,ny=NULL){
+f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=20,patch_locations=NULL,nx=NULL,ny=NULL,sim_melt=NULL){
   p0 <- ggplot(by_t,aes(x=t))+
     geom_line(aes(y=alpha,color='alpha'))+
     geom_line(aes(y=theta,color='theta'))+
     labs(title='kernel parameters',y='value')+
     theme_minimal()+
-    theme(legend.position = 'top')
+    theme(legend.position = 'inside')
   
   fill_colors <- c("First" = "white", "Last" = "red")
   outline_colors <- c("First" = "red", "Last" = "red")
@@ -364,7 +369,7 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25,patch_locations=NULL,n
     scale_color_manual(name = "Point", values=outline_colors)+
     scale_fill_manual(name = "Point", values=fill_colors)+
     labs(title='kernel parameters')+
-    theme(legend.position = 'top')
+    theme(legend.position = 'inside')
   
   p2 <- ggplot()+
     xlim(0,kern_xlim)+
@@ -374,7 +379,7 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25,patch_locations=NULL,n
     scale_linetype_manual(values=c('first' = 'dashed',
                                    'last' = 'solid'))+
     theme_minimal()+
-    theme(legend.position='top')+
+    theme(legend.position='inside')+
     labs(x='distance',y='density',title='Kernel')
   
   p3 <- ggplot(by_t,aes(x=t,y=popsize))+
@@ -389,9 +394,37 @@ f_PlotOutput <- function(by_t,kern_timesteps,kern_xlim=25,patch_locations=NULL,n
   
   if(!is.null(patch_locations)){
     p5 <- f_Plot_Landscape(patch_locations,nx,ny,do_now=FALSE)
-    grid.arrange(p0,p1,p2,p4,p3,p5, nrow=2)    
-  }  
-  else grid.arrange(p0,p1,p2,p4,p3,nrow=2)
+  }
+  else p5 <- NULL
+  
+  if(!is.null(sim_melt)){
+    sim_melt$x <- patch_locations$x[sim_melt$patch]
+    sim_melt$y <- patch_locations$y[sim_melt$patch]
+    
+    sim_df <- sim_melt[(sim_melt$t %in% kern_timesteps),]
+    p6 <- f_PlotEffectiveKernels(sim_df,v_alphas,v_thetas,patch_locations,plot_title="Effective kernels, all patches")
+    
+    sim_df_island <- sim_df[(sim_df$x<15),]
+    p7 <- f_PlotEffectiveKernels(sim_df_island,v_alphas,v_thetas,patch_locations,plot_title="Effective kernels, island")
+    
+    sim_df_mainland <- sim_df[(sim_df$x>15),]
+    p8 <- f_PlotEffectiveKernels(sim_df_mainland,v_alphas,v_thetas,patch_locations,plot_title="Effective kernels, mainland")
+    
+    sim_df_last <- sim_df[(sim_df$t==nsteps),]
+    sim_df_last <- sim_df_last[,.(abund=sum(popsize),x=first(x),y=first(y)),by=patch]
+    p9 <- ggplot(sim_df_last)+
+      geom_tile(aes(x=x,y=y,fill=abund))+
+      scale_y_reverse()+
+      labs(title=paste0("End population size, t=",nsteps))
+  }
+  else{
+    p6 <- NULL
+    p7 <- NULL
+    p8 <- NULL
+    p9 <- NULL
+  } 
+  
+  grid.arrange(p0,p1,p2,p4,p3,p5,p6,p7,p8,p9,ncol=3)
 }
 
 f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){

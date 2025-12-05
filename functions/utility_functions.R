@@ -37,13 +37,13 @@ f_plasticityK <- function(K_i, p, alpha, theta, n_alpha=5, n_theta=5){
 }
 
 ## improve the plasticity function
-## it should still take vectors of values for K, p, alpha, and theta. 
+## it still takes vectors of values for K, p, alpha, and theta. 
 f_plasticityK_new <- function(K, p, alpha, theta, n_alpha=5, n_theta=5, Kmin=NULL, Kmax=NULL){
   if(is.null(Kmin)) Kmin=min(K)
   if(is.null(Kmax)) Kmax=max(K)
   if(Kmin==Kmax) alpha_plastic <- alpha
   else {
-    alpha_add <- round(ifelse(K<Kmin,p,ifelse(K>Kmax,-p,p - 2*p*(K-Kmin)/(Kmax-Kmin))))
+    alpha_add <- round(ifelse(K<Kmin, p, ifelse(K>Kmax, -p, p-2*p*(K-Kmin)/(Kmax-Kmin))))
     alpha_plastic <- oob_squish(alpha+alpha_add, c(1,n_alpha))
   }
   theta_plastic <- theta

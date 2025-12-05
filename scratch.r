@@ -9,7 +9,7 @@ source('functions/utility_functions.R')
 
 
 # --------------------------------------------
-# check out plasticity function
+# check out base plasticity function
 f_PlasticityBase <- function(K,Kmin,Kmax,p){
   y <- round(ifelse(K<Kmin,p,ifelse(K>Kmax,-p,p - 2*p*(K-Kmin)/(Kmax-Kmin))))
 }
@@ -23,6 +23,22 @@ abline(v=Kmin)
 abline(v=Kmax)
 # --------------------------------------------
 
+# --------------------------------------------
+# testing full plasticity function
+vK <- patch_locations$K_i
+vp <- 2
+va <- sample(1:5,544,replace=TRUE)
+vt <- sample(1:5,544,replace=TRUE)
+ep <- f_plasticityK_new(vK,vp,va,vt,5,5)
+ep$vK=vK
+ep$vp=vp
+ep$va=va
+ep <- mutate(ep,addval=round(vp-2*vp*(vK-1)/12))
+
+plot(ep$vK,ep$addval)
+
+ep$alpha_plastic <- oob_squish(ep$va+ep$addval, c(1,5))
+# --------------------------------------------
 
 
 # --------------------------------------------

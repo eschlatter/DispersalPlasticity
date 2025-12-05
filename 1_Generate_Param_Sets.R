@@ -46,18 +46,9 @@ mu <- 0.01 # mutation frequency
 b <- 8 # reproductive output
 K <- 10
 #K <- round(runif(n=nx*ny,min=3,max=15)) # carrying capacity (also what plasticity responds to)
-
 disturb_prob=0
 
-## new K overlay with existing base map
-patch_map <- matrix(0,nrow=33,ncol=33)
-for(i in 1:(33*33)){
-  patch_map[params$patch_locations$y[i],params$patch_locations$x[i]] <- params$patch_locations$id[i]
-}
-patch_map[patch_map>0] <- 1
-frac_out <- f_GenerateMapWithK(base_map=patch_map,K_range=c(15,15), h=1.8, k=5, p=0.5, h_base=0.8, plot_flag=TRUE)
-
-frac_out <- f_GenerateMapWithK(K_range=c(15,15), h=1.8, k=5, p=0.5, h_base=0.8, plot_flag=TRUE)
+frac_out <- f_GenerateMapWithK(K_range=c(3,15), h=1.8, k=5, p=0.5, h_base=0.8, plot_flag=TRUE)
 list2env(frac_out,envir=environment())
 
 params <- list(nx=nx,ny=ny,nsteps=nsteps,
@@ -66,7 +57,28 @@ params <- list(nx=nx,ny=ny,nsteps=nsteps,
                mu=mu,b=b,K=K,
                disturb_prob=0,patch_locations=patch_locations,seed=NULL)
 
-save(params,file='params/ParSet3.RData')
+#save(params,file='params/VariableKPars.RData')
+
+
+########## Param set 3:
+## new constant-K overlay with existing base map
+source('0_Setup.R')
+load('params/VariableKPars.RData')
+
+patch_map <- matrix(0,nrow=nx,ncol=ny)
+for(i in 1:(nx*ny)){
+  patch_map[params$patch_locations$y[i],params$patch_locations$x[i]] <- params$patch_locations$id[i]
+}
+patch_map[patch_map>0] <- 1
+frac_out <- f_GenerateMapWithK(base_map=patch_map,K_range=c(11,11), h=1.8, k=5, p=0.5, h_base=0.8, plot_flag=TRUE)
+
+params <- list(nx=nx,ny=ny,nsteps=nsteps,
+               v_alphas=v_alphas,v_thetas=v_thetas,v_p=v_p,
+               alpha_start=alpha_start,theta_start=theta_start,p_start=p_start,
+               mu=mu,b=b,K=K,
+               disturb_prob=0,patch_locations=patch_locations,seed=NULL)
+
+#save(params,file='params/UniformKPars.RData')
 
 # -----------------------------------------------------
 # # load parameters

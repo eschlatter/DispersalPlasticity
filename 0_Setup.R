@@ -10,7 +10,7 @@ library(reshape2)
 library(fields)
 library(Matrix)
 library(bigsparser)
-library(rhdf5)
+require(rhdf5)
 library(data.table)
 library(parallel)
 

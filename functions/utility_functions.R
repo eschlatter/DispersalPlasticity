@@ -172,10 +172,33 @@ f_GetConnectivityMatrix <- function(alpha, theta, patch_dists, patch_angles){
   connectivity_matrix <- (pgamma(patch_dists+0.5,shape=alpha,scale=theta)-pgamma(patch_dists-0.5,shape=alpha,scale=theta))*patch_angles
 }
 
+
+f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angles,numCores){
+  npatch=length(alpha)
+  list_cms <- list(length=npatch)
+  connectivity_matrix <- mclapply(1:npatch,function(i) cm_i <- patch_angles[i,]*(pgamma(patch_dists[i,]+0.5,shape=alpha[i],scale=theta[i])-
+                                                                                 pgamma(patch_dists[i,]-0.5,shape=alpha[i],scale=theta[i])),
+                                  mc.cores=numCores)
+  connectivity_matrix <- do.call(rbind,connectivity_matrix)
+  colnames(connectivity_matrix) <- 1:npatch
+  return(connectivity_matrix)
+}
+
+# for(i in 1:length(alpha)){ # for each from patch
+#   # vector of proportion of individuals from patch i that land in each patch
+#   cm_i <- patch_angles[i,]*(pgamma(patch_dists[i,]+0.5,shape=alpha[i],scale=theta[i])-
+#                               pgamma(patch_dists[i,]-0.5,shape=alpha[i],scale=theta[i]))
+#   list_cms[[i]] <- cm_i
+# }
+# connectivity_matrix <- matrix(unlist(list_cms),nrow=length(alpha))
+#comp_results <- mclapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop),mc.cores = numCores)
+
 # inputs:
 #   matrices patch_dists and patch_angles
 #   vectors of patch-specific values of alpha and theta (if scalar, recycled for use across all patches)
-f_GetConnectivityMatrix_vectorized <- function(alpha, theta, patch_dists, patch_angles) {
+# output:
+#   matrix of proportion of individuals that disperse from each patch to each other patch, for the given patch-specific alphas and thetas
+f_GetConnectivityMatrix_vectorized <- function(alpha, theta, patch_dists, patch_angles,numCores) {
   np=nrow(patch_dists)
   if(length(alpha)==1) alpha <- rep(alpha,np)
   if(length(theta)==1) theta <- rep(theta,np)
@@ -189,7 +212,7 @@ f_GetConnectivityMatrix_vectorized <- function(alpha, theta, patch_dists, patch_
 }
 
 ## function to run within f_RunMatrixLoop that gets the plastic connectivity matrix for a given parameter group, g, defined by its index
-f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas){
+f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas,numCores){
   v <- group_index[g,]
   # compute effective parameters for each patch with plasticity (once per group)
   eff_params <- f_plasticityK_new(patch_locations$K_i, 
@@ -199,6 +222,6 @@ f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, pa
                               n_alpha = length(v_alphas),
                               n_theta = length(v_thetas))
   # build matrix
-  conn_mat <- f_GetConnectivityMatrix_vectorized(v_alphas[eff_params$alpha_plastic],
-                                                 v_thetas[eff_params$theta_plastic],patch_dists,patch_angles)
+  conn_mat <- f_GetConnectivityMatrix_parallel(v_alphas[eff_params$alpha_plastic],
+                                                 v_thetas[eff_params$theta_plastic],patch_dists,patch_angles,numCores)
 }

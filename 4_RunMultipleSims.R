@@ -45,3 +45,9 @@ for(i in 1:nrep){
   
   kernmeans_df <- rbind(kernmeans_df,data.frame(all_kernmean=all_kernmean,island_kernmean=island_kernmean,mainland_kernmean=mainland_kernmean))
 }
+
+kernmeans_df <- pivot_longer(kernmeans_df,everything())
+ggplot(kernmeans_df)+
+  geom_boxplot(aes(name,value))+
+  theme_minimal()+
+  labs(x='type of reef patch',y='kernel mean')

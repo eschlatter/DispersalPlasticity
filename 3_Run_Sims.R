@@ -3,18 +3,21 @@ source('0_Setup.R')
 load('params/VariableKPars.RData')
 params$v_p <- -2:2
 params$p_start <- 3
-params$nsteps=1000
+params$nsteps=10000
 params$mu=0.01
 list2env(x=params,envir=environment())
 sim_loop1 <- f_RunMatrixLoopLite(params)
+
 # sim_loop2 <- f_RunMatrixLoop(params)
 # all.equal(sim_loop1$Pij,sim_loop2$Pij)
 
 # save(sim_loop1,file='UniformK.RData')
 # load(file='UniformK.RData')
-sim_loop_out1 <- f_ProcessLoopOutputDataTable(sim_loop1$params,sim_loop1$Pij,sim_loop1$group_index, sim_loop1$time_run)
+# sim_loop_out1 <- f_ProcessLoopOutputDataTable(sim_loop1$params,sim_loop1$Pij,sim_loop1$group_index, sim_loop1$time_run)
 # sim_loop_out2 <- f_ProcessLoopOutputDataTable(sim_loop2$params,sim_loop2$Pij,sim_loop2$group_index, sim_loop2$time_run)
 # all.equal(sim_loop1$by_t[2:nsteps,],sim_loop_out2$by_t[2:nsteps,])
+
+plot(1:nsteps,sim_loop1$v_pmeans,type='l')
 
 ggplot(sim_loop_out1$by_t)+
   geom_line(aes(x=t,y=p))+

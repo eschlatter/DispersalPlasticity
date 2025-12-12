@@ -13,6 +13,7 @@ library(bigsparser)
 require(rhdf5)
 library(data.table)
 library(parallel)
+library(ape)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSparse.R')

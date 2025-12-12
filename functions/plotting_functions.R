@@ -658,6 +658,80 @@ f_PlotOutputNew <- function(by_t,kern_timesteps=NULL,kern_xlim=20,patch_location
   
 }
 
+## make some dynamics plots based on output of the lite version of the simulation function (which just tracks summary statistics, not the whole population)
+## input: output_lite, the list returned by f_RunMatrixLoopLite
+## returns: none, but makes some graphs
+f_PlotOutput_Lite <- function(output_lite){
+  list2env(output_lite$params,environment())
+  
+  dat <- output_lite$output_df[2:nsteps,] # remove the first row, because we didn't calculate stats for it
+  
+  ## plot map with K
+  g_map <- f_Plot_Landscape(patch_locations,nx,ny,do_now=FALSE)
+  
+  ## plot abundance
+  g_abund <- ggplot(dat,aes(x=t,y=v_abund))+
+    geom_line()+
+    theme_minimal()+
+    labs(title="Population size", x="time",y="population size")
+  #  print(g_abund)
+  
+  ## plot p (mean +/- sd) at each timestep
+  dat$p_lower <- dat$v_pmeans-sqrt(dat$v_pvars)
+  dat$p_upper <- dat$v_pmeans+sqrt(dat$v_pvars)
+  g_p <- ggplot(dat,aes(x=t,y=v_pmeans))+
+    geom_line()+
+    geom_ribbon(aes(ymin=p_lower,ymax=p_upper),alpha=0.15)+
+    theme_minimal()+
+    labs(title="Plasticity parameter",x='time',y='p (mean +/- sd)')
+  #  print(g_p)
+  
+  ### Plot fundamental and effective kernel means (mean +/- sd) at each timestep
+  dat$fund_mean_lower <- dat$fund_mean_mean-sqrt(dat$fund_mean_var)
+  dat$fund_mean_upper <- dat$fund_mean_mean+sqrt(dat$fund_mean_var)
+  dat$eff_mean_lower <- dat$eff_mean_mean-sqrt(dat$eff_mean_var)
+  dat$eff_mean_upper <- dat$eff_mean_mean+sqrt(dat$eff_mean_var)
+  g_kernmeans <- ggplot(dat,aes(x=t))+
+    geom_line(aes(y=fund_mean_mean,color="Fundamental"))+
+    geom_ribbon(aes(ymin=fund_mean_lower,ymax=fund_mean_upper,fill="Fundamental"),alpha=0.15)+
+    geom_line(aes(y=eff_mean_mean,color="Effective"))+
+    geom_ribbon(aes(ymin=eff_mean_lower,ymax=eff_mean_upper,fill="Effective"),alpha=0.15)+
+    theme_minimal()+
+    labs(title="Fundamental and effective kernel means",x='time',y='kernel mean (mean +/- sd at each timestep)')
+  #  print(g_kernmeans)
+  
+  # dat$fund_mode_lower <- dat$fund_mode_mean-sqrt(dat$fund_mode_var)
+  # dat$fund_mode_upper <- dat$fund_mode_mean+sqrt(dat$fund_mode_var)
+  # dat$eff_mode_lower <- dat$eff_mode_mean-sqrt(dat$eff_mode_var)
+  # dat$eff_mode_upper <- dat$eff_mode_mean+sqrt(dat$eff_mode_var)
+  # ## plot properties of the fundamental kernel at each timestep
+  # p_fundkern <- ggplot(dat,aes(x=t))+
+  #   geom_line(aes(y=fund_mode_mean,color="mode"))+
+  #   geom_ribbon(aes(ymin=fund_mode_lower,ymax=fund_mode_upper,fill="mode"),alpha=0.15)+
+  #   geom_line(aes(y=fund_mean_mean,color="mean"))+
+  #   geom_ribbon(aes(ymin=fund_mean_lower,ymax=fund_mean_upper,fill="mean"),alpha=0.15)+
+  #   theme_minimal()+
+  #   labs(title="Fundamental kernel",x='time',y='kernel property (mean +/- sd)')
+  # ## plot properties of the effective kernel at each timestep
+  # p_effkern <- ggplot(dat,aes(x=t))+
+  #   geom_line(aes(y=eff_mode_mean,color="mode"))+
+  #   geom_ribbon(aes(ymin=eff_mode_lower,ymax=eff_mode_upper,fill="mode"),alpha=0.15)+
+  #   geom_line(aes(y=eff_mean_mean,color="mean"))+
+  #   geom_ribbon(aes(ymin=eff_mean_lower,ymax=eff_mean_upper,fill="mean"),alpha=0.15)+
+  #   theme_minimal()+
+  #   labs(title="Effective kernel",x='time',y='kernel property (mean +/- sd)')
+  # grid.arrange(p_fundkern,p_effkern,ncol=1)
+  
+  ### Plot spatial autocorrelation (global Moran's I) of both fundamental and effective kernel means
+  g_autocorr <- ggplot(dat,aes(x=t))+
+    geom_line(aes(y=fund_mean_moran,color='Fundamental'))+
+    geom_line(aes(y=eff_mean_moran,color="Effective"))+
+    theme_minimal()+
+    labs(title="Spatial autocorrelation of kernel means",x = "time", y="Global Moran's I")
+  
+  grid.arrange(g_map,g_abund,g_p,g_kernmeans,g_autocorr,nrow=2)
+}
+
 f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){
   g <- ggplot()+
     xlim(0,kern_xlim)+
@@ -670,8 +744,8 @@ f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){
 f_Plot_Landscape <- function(patch_locations,nx,ny,do_now=TRUE){
   g <- ggplot(patch_locations,aes(x=x,y=y))+
     geom_tile(aes(fill=K_i))+
-    geom_vline(data=data.frame(x=seq(from=0.5,to=nx+0.5,by=1)),aes(xintercept=x),alpha=0.8,color='darkgray')+
-    geom_hline(data=data.frame(y=seq(from=0.5,to=ny+0.5,by=1)),aes(yintercept=y),alpha=0.8,color='darkgray')+
+#    geom_vline(data=data.frame(x=seq(from=0.5,to=nx+0.5,by=1)),aes(xintercept=x),alpha=0.8,color='darkgray')+
+#    geom_hline(data=data.frame(y=seq(from=0.5,to=ny+0.5,by=1)),aes(yintercept=y),alpha=0.8,color='darkgray')+
     scale_y_reverse()+
     theme_minimal()+
     labs(title="Carrying capacity (K) by patch")

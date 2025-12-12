@@ -7,6 +7,10 @@ source('functions/f_RunMatrixSim.R')
 #source('functions/f_RunMatrixSim2.R')
 source('functions/utility_functions.R')
 
+plot(1:nsteps,sim_loop1$output_df$v_pmeans,type='l')
+abline(h=p_sim_mean,col='red')
+abline(h=p_sim_mean+sqrt(p_sim_var_among_t),col='blue')
+abline(h=p_sim_mean-sqrt(p_sim_var_among_t),col='blue')
 
 # --------------------------------------------
 # check out base plasticity function

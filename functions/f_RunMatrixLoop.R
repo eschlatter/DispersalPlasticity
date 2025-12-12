@@ -126,7 +126,7 @@ f_RunMatrixLoop <- function(params){
 
 ########################################################################
 # version that only stores specified info
-f_RunMatrixLoopLite <- function(params, keep=list("p")){
+f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct")){
   starttime <- proc.time()
   numCores <- detectCores()
   
@@ -330,14 +330,15 @@ f_RunMatrixLoopLite <- function(params, keep=list("p")){
         
         ## effective kernel properties (i.e., accounting for plasticity)
         ### 1. kernel mode
-        eff_mode_each <- ifelse(Pij_eff$alpha_plastic<1,0,(Pij_eff$alpha_plastic-1)*Pij_eff$theta_plastic)
+        eff_mode_each <- ifelse(v_alphas[Pij_eff$alpha_plastic]<1,0,
+                                (v_alphas[Pij_eff$alpha_plastic]-1)*v_alphas[Pij_eff$theta_plastic])
         # mean value (over the population) of the effective kernel mode at each timestep
         eff_mode_mean <- sum(eff_mode_each*previous_pop)/sum(previous_pop)
         output_list$eff_mode_mean[t] <- eff_mode_mean
         # variance (over the population) of the effective kernel mode
         output_list$eff_mode_var[t] <- sum(previous_pop*(eff_mode_each-eff_mode_mean)^2)/sum(previous_pop)
         ### 2. kernel mean
-        eff_mean_each <- Pij_eff$alpha_plastic*Pij_eff$theta_plastic
+        eff_mean_each <- v_alphas[Pij_eff$alpha_plastic]*v_thetas[Pij_eff$theta_plastic]
         # mean value (over the population) of the effective kernel mean at each timestep
         eff_mean_mean <- sum(eff_mean_each*previous_pop)/sum(previous_pop)
         output_list$eff_mean_mean[t] <- eff_mean_mean

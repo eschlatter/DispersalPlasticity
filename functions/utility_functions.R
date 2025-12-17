@@ -97,10 +97,10 @@ f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,
   K <- patch_locations$K_i
   
   if(plot_flag==TRUE){
-    dev.new()
+#    dev.new()
     f_Plot_Landscape(patch_locations,nx,ny)
-    a <- dev.list()
-    dev.set(which=as.numeric(a['RStudioGD']))
+#    a <- dev.list()
+#    dev.set(which=as.numeric(a['RStudioGD']))
   }
   
   return(list(patch_locations=patch_locations,K=K,nx=nx,ny=ny))

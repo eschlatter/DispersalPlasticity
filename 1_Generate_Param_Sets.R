@@ -1,5 +1,30 @@
 source('0_Setup.R')
 
+########## Param set Array1: 
+nx <- NULL # defined later
+ny <- NULL # defined later
+nsteps <- 10000 # timesteps
+# dispersal kernel is a gamma distribution, shape=alpha, scale=theta
+v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
+v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
+alpha_start <- 0 # index (in v_alphas) of shape parameter initial value
+theta_start <- 0 # index in (v_thetas) of scale parameter initial value
+v_p <- -2:2
+p_start <- 0 # index (in v_p) of plasticity parameter initial value
+mu <- 0.01 # mutation frequency
+b <- 8 # reproductive output
+K <- NULL # defined later
+disturb_prob=0
+patch_locations=NULL # defined later
+
+params <- list(nx=nx,ny=ny,nsteps=nsteps,
+               v_alphas=v_alphas,v_thetas=v_thetas,v_p=v_p,
+               alpha_start=alpha_start,theta_start=theta_start,p_start=p_start,
+               mu=mu,b=b,K=K,
+               disturb_prob=disturb_prob,patch_locations=patch_locations,seed=NULL)
+
+save(params,file='params/ParSetArray1.RData')
+
 ########## Param set 1: 
 nx <- NULL # defined later
 ny <- NULL # defined later

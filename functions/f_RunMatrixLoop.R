@@ -188,40 +188,26 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
   temp_pop <- matrix(0,nrow=npatch,ncol=ngroups) # hold intermediate population values for this timestep, before competition
   to_patch <- numeric(npatch) # hold numbers of immigrants to each patch during dispersal
   all_conn_mats <- vector("list", ngroups) # list to hold connectivity matrices, which will be computed as they're needed (will have to be reset if K_i changes)
-  by_t <- data.frame(t=1:nsteps,alpha=NA,theta=NA,p=NA,popsize=NA)
   
   ## 5. Initialize output data structures
-  output_list=data.frame(t=1:nsteps)
+  output_list=list()
   if("abund" %in% keep){
-    output_list$v_abund = NA
+    output_list$df_abund = data.frame(t=1:nsteps,abund=NA)
   }
   if("p" %in% keep){
-    #output_list <- c(output_list,list(v_pmeans=fill_in,v_pvars=fill_in))
-    output_list$v_pmeans = NA
-    output_list$v_pvars = NA
+    output_list$df_p = data.frame(t=1:nsteps,mean=NA,var=NA)
   }
   if("kern" %in% keep){
-    output_list$fund_mode_mean = NA
-    output_list$fund_mode_var = NA
-    output_list$fund_mean_mean = NA
-    output_list$fund_mean_var = NA
-    output_list$eff_mode_mean = NA
-    output_list$eff_mode_var = NA
-    output_list$eff_mean_mean = NA
-    output_list$eff_mean_var = NA
-    
-    if("sp_struct" %in% keep){
-      output_list$fund_mean_moran = NA
-      output_list$eff_mean_moran = NA
-    }
+    output_list$df_fund = data.frame(t=1:nsteps,kernmode_mean=NA,kernmode_var=NA,kernmean_mean=NA,kernmean_var=NA,kernmean_moran=NA)
+    output_list$df_eff = data.frame(t=1:nsteps,kernmode_mean=NA,kernmode_var=NA,kernmean_mean=NA,kernmean_var=NA,kernmean_moran=NA)
   }
   
-  p_by_group <- v_p[group_index$p]
-  alpha_by_group <- v_alphas[group_index$alpha]
-  theta_by_group <- v_thetas[group_index$theta]
-  Pij_alpha <- matrix(alpha_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups)
-  Pij_theta <- matrix(theta_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups)
-  Pij_p <- matrix(p_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups)
+  p_by_group <- v_p[group_index$p] # value, not index
+  alpha_by_group <- group_index$alpha # index, not value
+  theta_by_group <- group_index$theta # index, not value
+  Pij_alpha <- matrix(alpha_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # index, not value
+  Pij_theta <- matrix(theta_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # index, not value
+  Pij_p <- matrix(p_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # value, not index
   # generate matrix of weights (inverse distance) to use in calculating Moran's I
   # is this an okay distance function to use? I know it matters when doing the statistical test,
   # but maybe as long as we use the same metric for all timesteps and simulations it's OK for comparing among them.
@@ -282,13 +268,17 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
     
     # sample K (or current abundance, if <K) individuals per patch and distribute them among groups of parameter values
     # (with probability according to the current abundance of each group of param values in that patch)
+    # patch_abunds <- rowSums(temp_pop)
+    # for(i_patch in which(patch_abunds>0)){
+    #   survivors=rmultinom(n=1, # there are this many cells (i.e., combos of parameter values) for the patch
+    #                       size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
+    #                       prob = temp_pop[i_patch,]) # probability of each cell being chosen depends on its current abundance)
+    #   new_pop[i_patch,] <- survivors
+    # }
+    
     patch_abunds <- rowSums(temp_pop)
-    for(i_patch in which(patch_abunds>0)){
-      survivors=rmultinom(n=1, # there are this many cells (i.e., combos of parameter values) for the patch
-                          size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
-                          prob = temp_pop[i_patch,]) # probability of each cell being chosen depends on its current abundance)
-      new_pop[i_patch,] <- survivors
-    }
+    comp_results <- mclapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop),mc.cores = numCores)
+    new_pop <- do.call(rbind,comp_results)
     
     previous_pop <- new_pop
     
@@ -297,15 +287,15 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
     
     if(sum(previous_pop)>0){
       if("abund" %in% keep){
-        output_list$v_abund[t] <- sum(previous_pop)
+        output_list$df_abund$abund[t] <- sum(previous_pop)
       }
       
       if("p" %in% keep){
         # mean value of p at each timestep
         p_mean <- sum(p_by_group*colSums(previous_pop))/sum(previous_pop)
-        output_list$v_pmeans[t] <- p_mean
+        output_list$df_p$mean[t] <- p_mean
         # variance of p within the population at each timestep
-        output_list$v_pvars[t] <- sum(colSums(previous_pop)*(p_by_group-p_mean)^2)/sum(previous_pop)
+        output_list$df_p$var[t] <- sum(colSums(previous_pop)*(p_by_group-p_mean)^2)/sum(previous_pop)
       }
       
       if("kern" %in% keep){
@@ -317,53 +307,53 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
         fund_mode_each <- ifelse(Pij_alpha<1,0,(Pij_alpha-1)*Pij_theta)
         # mean value (over the population) of the fundamental kernel mode at each timestep
         fund_mode_mean <- sum(fund_mode_each*previous_pop)/sum(previous_pop)
-        output_list$fund_mode_mean[t] <- fund_mode_mean
+        output_list$df_fund$kernmode_mean[t] <- fund_mode_mean
         # variance (over the population) of the fundamental kernel mode
-        output_list$fund_mode_var[t] <- sum(previous_pop*(fund_mode_each-fund_mode_mean)^2)/sum(previous_pop)
+        output_list$df_fund$kernmode_var[t] <- sum(previous_pop*(fund_mode_each-fund_mode_mean)^2)/sum(previous_pop)
         ### 2. kernel mean
         fund_mean_each <- Pij_alpha*Pij_theta
         # mean value (over the population) of the fundamental kernel mean at each timestep
         fund_mean_mean <- sum(fund_mean_each*previous_pop)/sum(previous_pop)
-        output_list$fund_mean_mean[t] <- fund_mean_mean
+        output_list$df_fund$kernmean_mean[t] <- fund_mean_mean
         # variance (over the population) of the fundamental kernel mean
-        output_list$fund_mean_var[t] <- sum(previous_pop*(fund_mean_each-fund_mean_mean)^2)/sum(previous_pop)
+        output_list$df_fund$kernmean_var[t] <- sum(previous_pop*(fund_mean_each-fund_mean_mean)^2)/sum(previous_pop)
         
         ## effective kernel properties (i.e., accounting for plasticity)
-        ### 1. kernel mode
+        ### 1. kernel mode -- something is weird here!!
         eff_mode_each <- ifelse(v_alphas[Pij_eff$alpha_plastic]<1,0,
                                 (v_alphas[Pij_eff$alpha_plastic]-1)*v_alphas[Pij_eff$theta_plastic])
         # mean value (over the population) of the effective kernel mode at each timestep
         eff_mode_mean <- sum(eff_mode_each*previous_pop)/sum(previous_pop)
-        output_list$eff_mode_mean[t] <- eff_mode_mean
+        output_list$df_eff$kernmode_mean[t] <- eff_mode_mean
         # variance (over the population) of the effective kernel mode
-        output_list$eff_mode_var[t] <- sum(previous_pop*(eff_mode_each-eff_mode_mean)^2)/sum(previous_pop)
+        output_list$df_eff$kernmode_var[t] <- sum(previous_pop*(eff_mode_each-eff_mode_mean)^2)/sum(previous_pop)
         ### 2. kernel mean
         eff_mean_each <- v_alphas[Pij_eff$alpha_plastic]*v_thetas[Pij_eff$theta_plastic]
         # mean value (over the population) of the effective kernel mean at each timestep
         eff_mean_mean <- sum(eff_mean_each*previous_pop)/sum(previous_pop)
-        output_list$eff_mean_mean[t] <- eff_mean_mean
+        output_list$df_eff$kernmean_mean[t] <- eff_mean_mean
         # variance (over the population) of the effective kernel mean at each timestep
-        output_list$eff_mean_var[t] <- sum(previous_pop*(eff_mean_each-eff_mean_mean)^2)/sum(previous_pop)
+        output_list$df_eff$kernmean_var[t] <- sum(previous_pop*(eff_mean_each-eff_mean_mean)^2)/sum(previous_pop)
         
         if("sp_struct" %in% keep){
           # some sort of measure of the spatial autocorrelation of fundamental kernel mean
           fund_mean_by_patch <- as.vector(rowSums(fund_mean_each*previous_pop))
-          output_list$fund_mean_moran[t] <- Moran.I(fund_mean_by_patch,weight=moran_weights)$observed
+          output_list$df_fund$kernmean_moran[t] <- Moran.I(fund_mean_by_patch,weight=moran_weights)$observed
           
           # some sort of measure of the spatial autocorrelation of effective kernel mean
           eff_mean_by_patch <- as.vector(rowSums(eff_mean_each*previous_pop))
-          output_list$eff_mean_moran[t] <- Moran.I(eff_mean_by_patch,weight=moran_weights)$observed
+          output_list$df_eff$kernmean_moran[t] <- Moran.I(eff_mean_by_patch,weight=moran_weights)$observed
           
           # slope of the line relating (among patches) distance to open water and kernel mode?
         }
       }
-    } #t
+    } # if sum(previous_pop)>0
     
-    }
+    } #t
     
   
   time_run <- proc.time()-starttime
-  return(list(output_df=output_list,params=params,time_run=time_run))
+  return(list(output_list=output_list,params=params,time_run=time_run))
 }
 
 

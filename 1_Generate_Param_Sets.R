@@ -7,10 +7,10 @@ nsteps <- 10000 # timesteps
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
 v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
-alpha_start <- 0 # index (in v_alphas) of shape parameter initial value
-theta_start <- 0 # index in (v_thetas) of scale parameter initial value
+alpha_start <- 3 # index (in v_alphas) of shape parameter initial value
+theta_start <- 3 # index in (v_thetas) of scale parameter initial value
 v_p <- -2:2
-p_start <- 0 # index (in v_p) of plasticity parameter initial value
+p_start <- 3 # index (in v_p) of plasticity parameter initial value
 mu <- 0.01 # mutation frequency
 b <- 8 # reproductive output
 K <- NULL # defined later

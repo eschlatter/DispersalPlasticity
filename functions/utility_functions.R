@@ -185,7 +185,7 @@ f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angle
                                                                                    pgamma(patch_dists[i,]-0.5,shape=alpha[i],scale=theta[i])),
                                   mc.cores=numCores)
   connectivity_matrix <- do.call(rbind,connectivity_matrix)
-  colnames(connectivity_matrix) <- 1:npatch
+  #colnames(connectivity_matrix) <- 1:npatch
   return(connectivity_matrix)
 }
 
@@ -227,8 +227,10 @@ f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, pa
                                   n_alpha = length(v_alphas),
                                   n_theta = length(v_thetas))
   # build matrix
+  # conn_mat <- f_GetConnectivityMatrix_vectorized(v_alphas[eff_params$alpha_plastic],
+  #                                              v_thetas[eff_params$theta_plastic],patch_dists,patch_angles,numCores)
   conn_mat <- f_GetConnectivityMatrix_parallel(v_alphas[eff_params$alpha_plastic],
-                                               v_thetas[eff_params$theta_plastic],patch_dists,patch_angles,numCores)
+                                                v_thetas[eff_params$theta_plastic],patch_dists,patch_angles,numCores)
 }
 
 # Take a vector of a time series, and identify the point when it has reached equilibrium

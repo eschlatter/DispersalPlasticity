@@ -128,7 +128,7 @@ f_RunMatrixLoop <- function(params){
 # version that only stores specified info
 f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct")){
   starttime <- proc.time()
-  numCores <- detectCores()
+  numCores <- parallelly::availableCores()
   
   list2env(x=params,envir=environment())
   
@@ -207,6 +207,8 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
   theta_by_group <- group_index$theta # index, not value
   Pij_alpha <- matrix(alpha_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # index, not value
   Pij_theta <- matrix(theta_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # index, not value
+  Pij_alpha_val <- v_alphas[Pij_alpha]
+  Pij_theta_val <- v_thetas[Pij_theta]
   Pij_p <- matrix(p_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # value, not index
   # generate matrix of weights (inverse distance) to use in calculating Moran's I
   # is this an okay distance function to use? I know it matters when doing the statistical test,
@@ -217,6 +219,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
   
   # Simulate
   # -------------------------------------------------------------------
+  interval_starttime <- proc.time()
   for(t in 2:nsteps){
     temp_pop[ ] <- 0 # reset temp_pop
     
@@ -227,10 +230,12 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       if(prod(patch_locations$K_i == as.vector(K))==0){
         patch_locations$K_i = as.vector(K)
         all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K_i
+        print(paste("t =",t,"reset connectivity matrices"))
       }
       
       # then make a new disturbance (maybe)
       if(rbinom(n=1,size=1,p=disturb_prob)==1){
+        print(paste("t =",t,"disturbance"))
         all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K_i
         
         disturb <- ideal.map(ny, nx, p = 0.2, nshape = 1, type = "circle", maxval = 1, minval = 0, binmap = TRUE, rasterflag = FALSE, plotflag=FALSE)
@@ -260,7 +265,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       temp_pop[,g] <- (1-mu)*to_patch+temp_pop[,g]
       
       for(mut_group in mutation_destinations[g,-1]){ # for each of the possible mutations. This doesn't need to be a for loop, but let's do some error checking first.
-        temp_pop[,mut_group] <- (mu/4)*to_patch+temp_pop[,mut_group]
+        temp_pop[,mut_group] <- (mu/6)*to_patch+temp_pop[,mut_group]
       }
     }
     
@@ -277,13 +282,18 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
     # }
     
     patch_abunds <- rowSums(temp_pop)
-    comp_results <- mclapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop),mc.cores = numCores)
+    comp_results <- lapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop))
+    #comp_results <- mclapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop),mc.cores = numCores)
     new_pop <- do.call(rbind,comp_results)
     
     previous_pop <- new_pop
     
     ################## Output ##################
-    if(t %% max(1,round(nsteps/10)) == 0) print(t)
+    if(t %% max(1,round(nsteps/10)) == 0){
+      print(t)
+      print(proc.time()-interval_starttime)
+      interval_starttime <- proc.time()
+    } 
     
     if(sum(previous_pop)>0){
       if("abund" %in% keep){
@@ -300,18 +310,18 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       
       if("kern" %in% keep){
         Pij_K <- matrix(patch_locations$K_i,byrow=FALSE,nrow=npatch,ncol=ngroups)
-        Pij_eff <- f_plasticityK_new(Pij_K,Pij_p,Pij_alpha,Pij_theta,length(v_alphas),length(v_thetas))
+        Pij_eff <- f_plasticityK_new(Pij_K,Pij_p,Pij_alpha,Pij_theta,length(v_alphas),length(v_thetas)) # indices, not values
         
         ## fundamental kernel properties (i.e., based on inherited alpha and theta, but not plasticity)
         ### 1. kernel mode
-        fund_mode_each <- ifelse(Pij_alpha<1,0,(Pij_alpha-1)*Pij_theta)
+        fund_mode_each <- ifelse(Pij_alpha_val<1,0,(Pij_alpha_val-1)*Pij_theta_val)
         # mean value (over the population) of the fundamental kernel mode at each timestep
         fund_mode_mean <- sum(fund_mode_each*previous_pop)/sum(previous_pop)
         output_list$df_fund$kernmode_mean[t] <- fund_mode_mean
         # variance (over the population) of the fundamental kernel mode
         output_list$df_fund$kernmode_var[t] <- sum(previous_pop*(fund_mode_each-fund_mode_mean)^2)/sum(previous_pop)
         ### 2. kernel mean
-        fund_mean_each <- Pij_alpha*Pij_theta
+        fund_mean_each <- Pij_alpha_val*Pij_theta_val
         # mean value (over the population) of the fundamental kernel mean at each timestep
         fund_mean_mean <- sum(fund_mean_each*previous_pop)/sum(previous_pop)
         output_list$df_fund$kernmean_mean[t] <- fund_mean_mean
@@ -349,8 +359,8 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       }
     } # if sum(previous_pop)>0
     
-    } #t
-    
+  } #t
+  
   
   time_run <- proc.time()-starttime
   return(list(output_list=output_list,params=params,time_run=time_run))
@@ -588,7 +598,11 @@ f_ProcessLoopOutputDataTable <- function(params,Pij,group_index,time_run){
   
   # mean param values at each timepoint
   # first take the sum across all cells of the param*popsize (numerator of the mean)
-  by_t <- sim_melt[,.(alpha=sum(alpha_value*popsize),theta=sum(theta_value*popsize),p=sum(p_value*popsize),popsize=sum(popsize)),by=t]
+  by_t <- sim_melt[ ,.(alpha=sum(alpha_value*popsize),
+                       theta=sum(theta_value*popsize),
+                       p=sum(p_value*popsize),
+                       popsize=sum(popsize)),
+                    by=t]
   
   # then divide by total popsize (denominator of the mean)
   by_t[,`:=`(alpha = alpha/popsize,

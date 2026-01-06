@@ -1,6 +1,6 @@
 source('0_Setup.R')
 
-########## Param set Array1: 
+########## Param set Array1: ########## 
 nx <- NULL # defined later
 ny <- NULL # defined later
 nsteps <- 10000 # timesteps
@@ -25,7 +25,7 @@ params <- list(nx=nx,ny=ny,nsteps=nsteps,
 
 save(params,file='params/ParSetArray1.RData')
 
-########## Param set 1: 
+########## Param set 1 ########## 
 nx <- NULL # defined later
 ny <- NULL # defined later
 nsteps <- 1000 # timesteps
@@ -50,7 +50,7 @@ params <- list(nx=nx,ny=ny,nsteps=nsteps,
 
 save(params,file='params/ParSet1.RData')
 
-########## Param set 2:
+########## Param set 2: 33x33 seascape with fractal base map and K-scape ########## 
 source('0_Setup.R')
 # simulate 33x33 seascape (use fractal base map)
 nx <- 33 # size of space in the x dimension
@@ -82,8 +82,7 @@ params <- list(nx=nx,ny=ny,nsteps=nsteps,
 
 #save(params,file='params/VariableKPars.RData')
 
-
-########## Param set 3:
+########## Param set 3: new constant-K overlay with existing base map ########## 
 ## new constant-K overlay with existing base map
 source('0_Setup.R')
 load('params/VariableKPars.RData')
@@ -102,6 +101,42 @@ params <- list(nx=nx,ny=ny,nsteps=nsteps,
                disturb_prob=0,patch_locations=patch_locations,seed=NULL)
 
 #save(params,file='params/UniformKPars.RData')
+
+########## Param set 4: use real anemone locations ########## 
+source('0_Setup.R')
+nx <- NULL # defined later
+ny <- NULL # defined later
+nsteps <- 12 # timesteps
+# dispersal kernel is a gamma distribution, shape=alpha, scale=theta
+v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
+v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
+alpha_start <- 1 # index (in v_alphas) of shape parameter initial value
+theta_start <- 1 # index in (v_thetas) of scale parameter initial value
+v_p <- -2:2
+p_start <- 3 # index (in v_p) of plasticity parameter initial value
+mu <- 0.01 # mutation frequency
+b <- 8000 # reproductive output
+K <- NULL # defined later
+disturb_prob=0
+keep=list("abund","p","kern")
+
+anemones <- read.csv('seascapes/Field data/DispersalPlasticity_anemones_metadata.csv')
+patch_locations <- group_by(anemones,Tag) %>%
+  summarize(y=first(Latitude),x=first(Longitude)) 
+patch_locations <- patch_locations %>%
+  mutate(id=1:nrow(patch_locations)) %>%
+  dplyr::select(id,x,y)
+patch_locations$K_i <- 1
+
+params <- list(nx=nx,ny=ny,nsteps=nsteps,
+               v_alphas=v_alphas,v_thetas=v_thetas,v_p=v_p,
+               alpha_start=alpha_start,theta_start=theta_start,p_start=p_start,
+               mu=mu,b=b,K=K,
+               disturb_prob=disturb_prob,patch_locations=patch_locations,keep=keep,seed=NULL)
+params$hab_type="points"
+save(params,file='params/ParSet4.RData')
+
+
 
 # -----------------------------------------------------
 # # load parameters
@@ -137,3 +172,6 @@ params <- list(nx=nx,ny=ny,nsteps=nsteps,
                alpha_start=alpha_start,theta_start=theta_start,p_start=p_start,
                mu=mu,b=b,K=K,
                disturb_prob=0,patch_locations=patch_locations,seed=NULL)
+
+
+

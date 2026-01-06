@@ -97,10 +97,10 @@ f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,
   K <- patch_locations$K_i
   
   if(plot_flag==TRUE){
-#    dev.new()
+    #    dev.new()
     f_Plot_Landscape(patch_locations,nx,ny)
-#    a <- dev.list()
-#    dev.set(which=as.numeric(a['RStudioGD']))
+    #    a <- dev.list()
+    #    dev.set(which=as.numeric(a['RStudioGD']))
   }
   
   return(list(patch_locations=patch_locations,K=K,nx=nx,ny=ny))
@@ -109,7 +109,9 @@ f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,
 # takes existing map (patch_locations)
 # or generates uniform grid (if patch_locations==NULL)
 # returns connectivity matrices and related objects for use in simulation
-f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE){
+# hab_type = "grid" (grid of habitat patches with x-y coordinates), "points" (anemone locations with gps points)
+# nav_rad = navigation radius (in km). Used when hab_type="points".
+f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE,hab_type="grid",nav_rad=0.1,numCores=1){
   # list of patch locations and IDs
   # (dimensions: npatch x 3)
   # "location" is the center of the 
@@ -121,24 +123,56 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
   
   # a "map" of the patch numbers, spatially arranged
   # (dimensions: nx x ny)
-  patch_map <- matrix(nrow=ny,ncol=nx)
-  for(i in 1:npatch){
-    patch_map[patch_locations$y[i],patch_locations$x[i]] <- patch_locations$id[i]
+  if(hab_type=="grid"){
+    patch_map <- matrix(nrow=ny,ncol=nx)
+    for(i in 1:npatch){
+      patch_map[patch_locations$y[i],patch_locations$x[i]] <- patch_locations$id[i]
+    }
+    
+    # a matrix of distances between the centers of each patch (i.e., r in polar coords)
+    # (dimensions: npatch x npatch)
+    patch_dists <- matrix(nrow=npatch,ncol=npatch)
+    colnames(patch_dists) <- patch_locations$id
+    for(i in 1:npatch){
+      patch_dists[i,] = sqrt((patch_locations$x[i]-patch_locations$x)^2+(patch_locations$y[i]-patch_locations$y)^2)
+    }
+    
+    # a matrix of the size of the pie wedge between each patch (i.e., theta in polar coords -- not theta of the dispersal kernel)
+    # assuming the width of the cell at the given distance is 1: not quite correct most of the time, but probably close enough
+    # (dimensions: npatch x npatch)
+    patch_angles <- suppressWarnings(2*asin(1/(2*patch_dists))/(2*pi))
+    patch_angles[is.nan(patch_angles)] <- 1
+    
+    overlap_discount=rep(1,times=npatch)
   }
   
-  # a matrix of distances between the centers of each patch (i.e., r in polar coords)
-  # (dimensions: npatch x npatch)
-  patch_dists <- matrix(nrow=npatch,ncol=npatch)
-  colnames(patch_dists) <- patch_locations$id
-  for(i in 1:npatch){
-    patch_dists[i,] = sqrt((patch_locations$x[i]-patch_locations$x)^2+(patch_locations$y[i]-patch_locations$y)^2)
+  if(hab_type=="points"){
+    # first, create a shapefile of points from patch_locations
+    patch_sf <- st_as_sf(patch_locations,coords=c("x","y"))
+    st_crs(patch_sf) <- 4326 # change this if we need to
+    # calculate distances between all points, in km
+    patch_dists <- st_distance(patch_sf)
+    patch_dists <- matrix(as.numeric(patch_dists),nrow=nrow(patch_dists))
+    
+    # a matrix of the size of the pie wedge between each patch (i.e., theta in polar coords -- not theta of the dispersal kernel)
+    # assuming the width of the cell at the given distance is 1: not quite correct most of the time, but probably close enough
+    # (dimensions: npatch x npatch)
+    patch_angles <- suppressWarnings(2*asin(nav_rad/(2*patch_dists))/(2*pi))
+    patch_angles[is.nan(patch_angles)] <- 1
+    
+    # if patches aren't on a grid,
+    # find the overlap of each patch's basin of attraction with other basins
+    # first define the basins
+    circs=st_buffer(patch_sf,dist=nav_rad*1000*2) # dist is the diameter of the circle, in meters
+    onecirc_area=st_area(circs[1,])
+    # then calculate the overlaps (this is slow; should use mclapply)
+    all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = numCores)
+    all_overlaps <- unlist(all_overlaps)
+    overlap_discount <- 1/(1+all_overlaps)
+    
+    patch_map=NULL
   }
   
-  # a matrix of the size of the pie wedge between each patch (i.e., theta in polar coords -- not theta of the dispersal kernel)
-  # assuming the width of the cell at the given distance is 1: not quite correct most of the time, but probably close enough
-  # (dimensions: npatch x npatch)
-  patch_angles <- suppressWarnings(2*asin(1/(2*patch_dists))/(2*pi))
-  patch_angles[is.nan(patch_angles)] <- 1
   
   # connectivity matrices
   # (dimensions: nalpha x ntheta x npatch x npatch)
@@ -165,7 +199,8 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
               patch_map=patch_map,
               patch_dists=patch_dists,
               patch_angles=patch_angles,
-              npatch=npatch))
+              npatch=npatch,
+              overlap_discount=overlap_discount))
 }
 
 
@@ -177,12 +212,14 @@ f_GetConnectivityMatrix <- function(alpha, theta, patch_dists, patch_angles){
   connectivity_matrix <- (pgamma(patch_dists+0.5,shape=alpha,scale=theta)-pgamma(patch_dists-0.5,shape=alpha,scale=theta))*patch_angles
 }
 
-
-f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angles,numCores){
+# output: rates of dispersal from each patch to each other patch
+# Connectivity[i,j] = the proportion of dispersers from patch j that land in patch i
+f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angles,overlap_discount,numCores){
   npatch=length(alpha)
   list_cms <- list(length=npatch)
-  connectivity_matrix <- mclapply(1:npatch,function(i) cm_i <- patch_angles[i,]*(pgamma(patch_dists[i,]+0.5,shape=alpha[i],scale=theta[i])-
-                                                                                   pgamma(patch_dists[i,]-0.5,shape=alpha[i],scale=theta[i])),
+  connectivity_matrix <- mclapply(1:npatch,function(i) cm_i <- overlap_discount[i]*patch_angles[i,]*
+                                    (pgamma(patch_dists[i,]+0.5,shape=alpha[i],scale=theta[i])-
+                                       pgamma(patch_dists[i,]-0.5,shape=alpha[i],scale=theta[i])),
                                   mc.cores=numCores)
   connectivity_matrix <- do.call(rbind,connectivity_matrix)
   #colnames(connectivity_matrix) <- 1:npatch
@@ -217,7 +254,7 @@ f_GetConnectivityMatrix_vectorized <- function(alpha, theta, patch_dists, patch_
 }
 
 ## function to run within f_RunMatrixLoop that gets the plastic connectivity matrix for a given parameter group, g, defined by its index
-f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas,numCores){
+f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas,numCores){
   v <- group_index[g,]
   # compute effective parameters for each patch with plasticity (once per group)
   eff_params <- f_plasticityK_new(patch_locations$K_i, 
@@ -229,8 +266,9 @@ f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, pa
   # build matrix
   # conn_mat <- f_GetConnectivityMatrix_vectorized(v_alphas[eff_params$alpha_plastic],
   #                                              v_thetas[eff_params$theta_plastic],patch_dists,patch_angles,numCores)
-  conn_mat <- f_GetConnectivityMatrix_parallel(v_alphas[eff_params$alpha_plastic],
-                                                v_thetas[eff_params$theta_plastic],patch_dists,patch_angles,numCores)
+  conn_mat <- f_GetConnectivityMatrix_parallel(alpha=v_alphas[eff_params$alpha_plastic],
+                                               theta=v_thetas[eff_params$theta_plastic],
+                                               patch_dists=patch_dists,patch_angles=patch_angles,overlap_discount=overlap_discount,numCores=numCores)
 }
 
 # Take a vector of a time series, and identify the point when it has reached equilibrium
@@ -284,4 +322,12 @@ f_FindEquil <- function(v_t,showplot=FALSE){
   
   if(is.null(equil_pt)) print("Warning: no equilibrium found")
   return(equil_pt) # if no equilibrium point is found, then the returned value is nt.
+}
+
+# used in lapply in f_MakeHabitat:
+# find area of overlap of one circle (j) with all other circles
+# assumes a sfc_POLYGON object called circs, with a row for each circle
+f_FindOverlapAreas <- function(j,circs,onecirc_area){
+  all_intersects <- st_area(st_make_valid(st_intersection(circs[j,],circs[-j,])))
+  overlap_area <- sum(all_intersects)/onecirc_area  
 }

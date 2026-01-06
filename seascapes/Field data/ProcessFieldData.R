@@ -14,7 +14,7 @@ units(kimbe_reef_area) <- "km^2" # and convert to km^2
 # Convert reef shapefile to raster for simulation
 template <- rast(extent=raster::extent(kimbe_reef),resolution=0.0002)
 kimbe_raster <- terra::rasterize(x=kimbe_reef,y=template)
-kimbe_raster <- raster(kimbe_raster)
+kimbe_raster <- raster::raster(kimbe_raster)
 n_patch <- sum(kimbe_raster@data@values,na.rm=TRUE) # how many patches
 
 plot(kimbe_raster,col='black')
@@ -25,13 +25,15 @@ text(x=150.07,y=-5.45,labels=paste0(n_patch," patches"))
 anemones <- read.csv('seascapes/Field data/DispersalPlasticity_anemones_metadata.csv')
 gps_pts <- group_by(anemones,Tag) %>%
   summarize(Latitude=first(Latitude),Longitude=first(Longitude),Reef=first(Reef))
+gps_pts <- st_as_sf(gps_pts,coords=c("Longitude","Latitude"))
+st_crs(gps_pts) <- 4326 # this looks right on the map, so I'm going with it
 reefs <- group_by(anemones,Reef) %>%
   summarize(Latitude=mean(Latitude),Longitude=mean(Longitude))
 
 # Plot anemone locations
 ggplot(kimbe_reef)+
   geom_sf()+
-  geom_point(data=gps_pts,aes(x=Longitude,y=Latitude,color=Reef),size=0.75)+
+  geom_sf(data=gps_pts,aes(color=Reef),size=0.75)+
   geom_text_repel(data=reefs,aes(x=Longitude,y=Latitude,label=Reef,color=Reef),box.padding=0.75,size=3)+
   theme_minimal()+
   theme(legend.position = "none")+

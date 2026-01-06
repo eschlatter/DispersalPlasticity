@@ -93,7 +93,7 @@ f_RunMatrixLoop <- function(params){
       
       # calculate the connectivity matrix among patches, given the group parameter values and patch-level K's
       # (and accounting for the patch population x per capita output b_i from each patch)
-      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas, numCores) # calculate this matrix, if it hasn't been used before
+      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas, overlap_discount, numCores) # calculate this matrix, if it hasn't been used before
       conn_mat <- all_conn_mats[[g]] # otherwise, grab it from the list
       to_patch <- (1-p_penalty)*patch_locations$b_i*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
       
@@ -139,8 +139,9 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
   # Data structures to describe space and dispersal
   # -------------------------------------------------------------------
   # see utility functions/f_MakeHabitat for details on what's in each object
-  list2env(x=f_MakeHabitat(nx,ny,v_alphas,v_thetas,patch_locations),envir=environment())
-  if(!"K_i" %in% colnames(patch_locations)) patch_locations$K_i <- as.vector(K)
+  list2env(x=f_MakeHabitat(nx=nx,ny=ny,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                           hab_type=hab_type,nav_rad=0.1,numCores=numCores),envir=environment())
+  if(!"K_i" %in% colnames(patch_locations)) patch_locations$K_i <- as.vector(K) else K <- patch_locations$K_i
   patch_locations$b_i <- as.vector(b)
   params$patch_locations <- patch_locations
   
@@ -257,7 +258,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       
       # calculate the connectivity matrix among patches, given the group parameter values and patch-level K's
       # (and accounting for the patch population x per capita output b_i from each patch)
-      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas, numCores) # calculate this matrix, if it hasn't been used before
+      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas, numCores) # calculate this matrix, if it hasn't been used before
       conn_mat <- all_conn_mats[[g]] # otherwise, grab it from the list
       to_patch <- (1-p_penalty)*patch_locations$b_i*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
       
@@ -282,7 +283,8 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
     # }
     
     patch_abunds <- rowSums(temp_pop)
-    comp_results <- lapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop))
+    comp_results <- lapply(1:npatch,function(i) f_Competition(i_patch=i,patch_abunds=patch_abunds,patch_locations=patch_locations,
+                                                              temp_pop=temp_pop,ngroups=ngroups))
     #comp_results <- mclapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop),mc.cores = numCores)
     new_pop <- do.call(rbind,comp_results)
     
@@ -467,7 +469,7 @@ f_RunMatrixLoopParallel <- function(params){
       
       # calculate the connectivity matrix among patches, given the group parameter values and patch-level K's
       # (and accounting for the patch population x per capita output b_i from each patch)
-      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas) # calculate this matrix, if it hasn't been used before
+      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas) # calculate this matrix, if it hasn't been used before
       conn_mat <- all_conn_mats[[g]] # otherwise, grab it from the list
       to_patch <- patch_locations$b_i*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
       
@@ -502,11 +504,11 @@ f_RunMatrixLoopParallel <- function(params){
 
 ########################################################################
 # function to do competition step in parallel
-f_Competition <- function(i_patch,patch_abunds,patch_locations,temp_pop){
-  if(patch_abunds[i_patch]>0){
-    survivors=t(rmultinom(n=1, # there are this many cells (i.e., combos of parameter values) for the patch
-                          size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
-                          prob = temp_pop[i_patch,])) # probability of each cell being chosen depends on its current abundance)
+f_Competition <- function(i_patch,patch_abunds,patch_locations,temp_pop,ngroups){
+  if(patch_abunds[i_patch]>0){ # if the patch isn't empty
+    survivors=t(rmultinom(n=1,
+                          size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose groups for min(abundance, K) survivors
+                          prob = temp_pop[i_patch,])) # probability of each group being chosen depends on its current abundance
   }
   else survivors <- vector(mode='integer',length=ngroups)
   return(survivors)
@@ -526,7 +528,7 @@ f_ReprodDispMut <- function(g,group_index,previous_step,mutation_destinations,al
     
     # calculate the connectivity matrix among patches, given the group parameter values and patch-level K's
     # (and accounting for the patch population x per capita output b_i from each patch)
-    if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, v_p, v_alphas, v_thetas) # calculate this matrix, if it hasn't been used before
+    if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas) # calculate this matrix, if it hasn't been used before
     conn_mat <- all_conn_mats[[g]] # otherwise, grab it from the list
     to_patch <- patch_locations$b_i*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
     

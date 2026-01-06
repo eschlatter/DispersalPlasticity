@@ -1,14 +1,18 @@
 ## run the model
 source('0_Setup.R')
-load('params/VariableKPars.RData')
+load('params/ParSet2.RData')
 params$v_p <- -2:2
 params$p_start <- 0
 params$alpha_start <- 0
 params$theta_start <- 0
 params$nsteps=12
 params$mu=0.01
+params$hab_type="grid"
 list2env(x=params,envir=environment())
 sim_loop1 <- f_RunMatrixLoopLite(params)
+
+plot(1:nsteps,sim_loop1$output_list$df_eff$kernmean_mean,type='l')
+plot(1:nsteps,sim_loop1$output_list$df_abund$abund,type='l')
 
 # sim_loop2 <- f_RunMatrixLoop(params)
 # all.equal(sim_loop1$Pij,sim_loop2$Pij)
@@ -18,15 +22,6 @@ sim_loop1 <- f_RunMatrixLoopLite(params)
 # sim_loop_out1 <- f_ProcessLoopOutputDataTable(sim_loop1$params,sim_loop1$Pij,sim_loop1$group_index, sim_loop1$time_run)
 # sim_loop_out2 <- f_ProcessLoopOutputDataTable(sim_loop2$params,sim_loop2$Pij,sim_loop2$group_index, sim_loop2$time_run)
 # all.equal(sim_loop1$by_t[2:nsteps,],sim_loop_out2$by_t[2:nsteps,])
-
-plot(1:nsteps,sim_loop1$output_df$eff_mean_mean,type='l')
-print(sim_loop1$time_run)
-
-
-ggplot(sim_loop_out1$by_t)+
-  geom_line(aes(x=t,y=p))+
-  theme_minimal()+
-  labs(title="Heterogeneous K")
 
 # ## other versions
 # sim_loop_new <- f_RunMatrixLoopNew(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL, seed=40,file_out="model_runs/20251121_1.h5")

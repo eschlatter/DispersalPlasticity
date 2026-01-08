@@ -1,6 +1,4 @@
-########################################################################
-# first version of this function:
-# generates parameter- (and K-) specific connectivity matrices as they're needed, and then stores them
+####################### version that stores all timesteps #######################
 f_RunMatrixLoop <- function(params){
   starttime <- proc.time()
   numCores <- detectCores()
@@ -124,9 +122,9 @@ f_RunMatrixLoop <- function(params){
   return(list(params=params,Pij=Pij,group_index=group_index,time_run=time_run,seed=seed))
 }
 
-########################################################################
-# version that only stores specified info
-f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct")){
+
+######################## version that only stores summary stats #######################
+f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"),show_plot=FALSE,makehab_output=NULL){
   starttime <- proc.time()
   numCores <- parallelly::availableCores()
   
@@ -139,11 +137,13 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
   # Data structures to describe space and dispersal
   # -------------------------------------------------------------------
   # see utility functions/f_MakeHabitat for details on what's in each object
-  list2env(x=f_MakeHabitat(nx=nx,ny=ny,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
-                           hab_type=hab_type,nav_rad=0.1,numCores=numCores),envir=environment())
-  if(!"K_i" %in% colnames(patch_locations)) patch_locations$K_i <- as.vector(K) else K <- patch_locations$K_i
-  patch_locations$b_i <- as.vector(b)
+  if(is.null(makehab_output)) makehab_output <- f_MakeHabitat(nx=nx,ny=ny,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                                                              hab_type=hab_type,nav_rad=nav_rad,numCores=numCores)
+  list2env(x=makehab_output,envir=environment())
+  K <- patch_locations$K_i # keep a record of what these are at the beginning
+  b <- patch_locations$b_i # keep a record of what these are at the beginning
   params$patch_locations <- patch_locations
+  params$patch_sf <- patch_sf
   
   # Data structures to describe population
   # -------------------------------------------------------------------
@@ -258,7 +258,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       
       # calculate the connectivity matrix among patches, given the group parameter values and patch-level K's
       # (and accounting for the patch population x per capita output b_i from each patch)
-      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas, numCores) # calculate this matrix, if it hasn't been used before
+      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas, nav_rad, numCores) # calculate this matrix, if it hasn't been used before
       conn_mat <- all_conn_mats[[g]] # otherwise, grab it from the list
       to_patch <- (1-p_penalty)*patch_locations$b_i*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
       
@@ -295,6 +295,17 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       print(t)
       print(proc.time()-interval_starttime)
       interval_starttime <- proc.time()
+      
+      if(show_plot==TRUE){
+        if(hab_type=="points"){
+          g_map_abund <- ggplot(patch_sf)+
+            geom_sf(aes(color=rowSums(new_pop)))+
+            labs(color="Abundance",title=paste0("t=",t))+
+            theme_minimal()+
+            annotation_scale()
+          print(g_map_abund)
+        }
+      }
     } 
     
     if(sum(previous_pop)>0){
@@ -368,142 +379,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
   return(list(output_list=output_list,params=params,time_run=time_run))
 }
 
-
-########################################################################
-# parallelize it a bit
-f_RunMatrixLoopParallel <- function(params){
-  starttime <- proc.time()
-  numCores <- detectCores()
-  
-  list2env(x=params,envir=environment())
-  
-  # # make each run replicable, or use seed from existing run
-  # if(is.null(seed)) seed = rnorm(1)
-  # set.seed(seed)
-  
-  # Data structures to describe space and dispersal
-  # -------------------------------------------------------------------
-  
-  # see utility functions/f_MakeHabitat for details on what's in each object
-  hab <- f_MakeHabitat(nx,ny,v_alphas,v_thetas,patch_locations)
-  patch_locations <- hab$patch_locations
-  patch_dists <- hab$patch_dists
-  patch_angles <- hab$patch_angles
-  patch_map <- hab$patch_map
-  npatch <- hab$npatch
-  rm(hab)
-  if(!"K_i" %in% colnames(patch_locations)) patch_locations$K_i <- as.vector(K)
-  patch_locations$b_i <- as.vector(b)
-  params$patch_locations <- patch_locations
-  
-  # Data structures to describe population
-  # -------------------------------------------------------------------
-  
-  ## 1. group_index: all unique combinations of parameters alpha, theta, and p
-  group_index <- expand.grid(alpha=1:length(v_alphas),theta=1:length(v_thetas),p=1:length(v_p))
-  ngroups <- nrow(group_index)
-  
-  ## 2. Pij: population object
-  ## dimensions 1 = npatch, 2 = ngroups, 3 = nsteps
-  Pij <- array(0, dim=c(npatch,ngroups,nsteps))
-  # initialize Pij
-  start_grp <- which(group_index$alpha==alpha_start & group_index$theta==theta_start & group_index$p==p_start)
-  Pij[,start_grp,1] <- patch_locations$K_i
-  
-  ## 3. mutation_destinations: for each parameter groups, what parameter groups can a single mutation reach?
-  ## dimensions 1 = ngroups, 2 = number of types of mutation events (including no mutation)
-  # first, list the possible mutations to each parameter
-  # (each index represents a mutation event; only one parameter can change per mutation event)
-  alpha_adds=c(0,1,-1,0,0,0,0)
-  theta_adds=c(0,0,0,1,-1,0,0)
-  p_adds=c(0,0,0,0,0,1,-1)
-  # then make the matrix
-  mutation_destinations <- matrix(NA, nrow=ngroups, ncol=length(alpha_adds))
-  for(mut_num in 1:length(alpha_adds)) {
-    for(grp in 1:ngroups) {
-      dest_grp <- which(group_index$alpha == group_index$alpha[grp] + alpha_adds[mut_num] & 
-                          group_index$theta == group_index$theta[grp] + theta_adds[mut_num] &
-                          group_index$p == group_index$p[grp] + p_adds[mut_num])
-      mutation_destinations[grp, mut_num] <- ifelse(length(dest_grp)!=0, dest_grp, grp)
-    }
-  }
-  
-  ## 4. Initialize temporary data structures
-  temp_pop <- matrix(0,nrow=npatch,ncol=ngroups) # hold intermediate population values for this timestep, before competition
-  to_patch <- numeric(npatch) # hold numbers of immigrants to each patch during dispersal
-  all_conn_mats <- vector("list", ngroups) # list to hold connectivity matrices, which will be computed as they're needed (will have to be reset if K_i changes)
-  
-  # Simulate
-  # -------------------------------------------------------------------
-  for(t in 2:nsteps){
-    temp_pop[ ] <- 0 # reset temp_pop
-    
-    ################## Disturbance ##################
-    
-    if(t %% 10 == 0){ # disturbances last for 10 timesteps
-      # first, reset all K's from any disturbance that occurred 10 timesteps previously
-      if(prod(patch_locations$K_i == as.vector(K))==0){
-        patch_locations$K_i = as.vector(K)
-        all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K_i
-      }
-      
-      # then make a new disturbance (maybe)
-      if(rbinom(n=1,size=1,p=disturb_prob)==1){
-        all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K_i
-        
-        disturb <- ideal.map(ny, nx, p = 0.2, nshape = 1, type = "circle", maxval = 1, minval = 0, binmap = TRUE, rasterflag = FALSE, plotflag=FALSE)
-        disturb_patches <- as.numeric(na.omit(patch_map[disturb!=0]))
-        patch_locations$K_i[disturb_patches] <- 0
-      }
-    }
-    
-    ################## Reproduction and Dispersal and Mutation ##################
-    pop_by_group <- colSums(Pij[,,t-1])
-    
-    for(g in which(pop_by_group>0)){
-      # get parameter values for that parameter group
-      v <- group_index[g,]
-      
-      # get population of each patch for that parameter group
-      patch_pops <- Pij[,g,t-1]
-      
-      # calculate the connectivity matrix among patches, given the group parameter values and patch-level K's
-      # (and accounting for the patch population x per capita output b_i from each patch)
-      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas) # calculate this matrix, if it hasn't been used before
-      conn_mat <- all_conn_mats[[g]] # otherwise, grab it from the list
-      to_patch <- patch_locations$b_i*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
-      
-      # Divide up to_patch among parameter groups that are the result of mutation
-      temp_pop[,g] <- (1-mu)*to_patch+temp_pop[,g]
-      
-      for(mut_group in mutation_destinations[g,-1]){ # for each of the possible mutations. This doesn't need to be a for loop, but let's do some error checking first.
-        temp_pop[,mut_group] <- (mu/4)*to_patch+temp_pop[,mut_group]
-      }
-    }
-    
-    # results <- mclapply(which(pop_by_group>0), 
-    #                     function(i) f_ReprodDispMut(i,group_index,Pij[,,t-1],mutation_destinations,all_conn_mats,patch_locations,patch_dists,patch_angles,v_p,v_alphas,v_thetas,mu),
-    #                     mc.cores = numCores)
-    # temp_pop <- Reduce('+',results) # adds all the individual temp_pop_g's together
-    
-    ################## Competition ##################
-    
-    # sample K (or current abundance, if <K) individuals per patch and distribute them among groups of parameter values
-    # (with probability according to the current abundance of each group of param values in that patch)
-    patch_abunds <- rowSums(temp_pop)
-    comp_results <- mclapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop),mc.cores = numCores)
-    Pij[,,t] <- do.call(rbind,comp_results)
-    
-    if(t %% max(1,round(nsteps/10)) == 0) print(t)
-  }
-  
-  time_run <- proc.time()-starttime
-  return(list(params=params,Pij=Pij,group_index=group_index,time_run=time_run,seed=seed))
-}
-
-
-########################################################################
-# function to do competition step in parallel
+######################## function to do competition step in parallel #######################
 f_Competition <- function(i_patch,patch_abunds,patch_locations,temp_pop,ngroups){
   if(patch_abunds[i_patch]>0){ # if the patch isn't empty
     survivors=t(rmultinom(n=1,
@@ -514,8 +390,8 @@ f_Competition <- function(i_patch,patch_abunds,patch_locations,temp_pop,ngroups)
   return(survivors)
 }
 
-########################################################################
-# function to do reproduction, dispersal, and mutation steps in parallel
+############# function to do reproduction, dispersal, and mutation steps in parallel #############
+# (not using this; it actually slows things down)
 f_ReprodDispMut <- function(g,group_index,previous_step,mutation_destinations,all_conn_mats,patch_locations,patch_dists,patch_angles,v_p,v_alphas,v_thetas,mu){
   temp_pop_g <- matrix(0,nrow=nrow(patch_locations),ncol=nrow(group_index)) # hold intermediate population values from this group
   
@@ -544,10 +420,7 @@ f_ReprodDispMut <- function(g,group_index,previous_step,mutation_destinations,al
 }
 
 
-
-
-########################################################################
-# take the raw output of simulation function and process it into something plottable
+############## process raw output of all-timesteps simulation function #############
 f_ProcessLoopOutput <- function(params,Pij,group_index,time_run){
   list2env(x=params,envir=environment())
   # melt into a dataframe with columns patch, timestep, alpha, theta, p, popsize
@@ -573,8 +446,7 @@ f_ProcessLoopOutput <- function(params,Pij,group_index,time_run){
               b=b))
 }
 
-########################################################################
-# take the raw output of simulation function and process it into something plottable
+############## process raw output of all-timesteps simulation function, faster #############
 # use data.table instead of dplyr
 f_ProcessLoopOutputDataTable <- function(params,Pij,group_index,time_run){
   list2env(x=params,envir=environment())
@@ -619,8 +491,8 @@ f_ProcessLoopOutputDataTable <- function(params,Pij,group_index,time_run){
               b=b))
 }
 
-########################################################################
-# take the output of f_RunMatrixLoopLite and generate stats summarizing across timesteps
+
+############## process raw output of lite simulation function #############
 
 f_GetOutputStats <- function(output_df,nsteps){
   equil_pt <- 0.25*nsteps # I need a better method than this.

@@ -1,15 +1,25 @@
 ## run the model
 source('0_Setup.R')
-load('params/ParSet2.RData')
+load('params/ParSet4.RData')
 params$v_p <- -2:2
 params$p_start <- 0
 params$alpha_start <- 0
 params$theta_start <- 0
-params$nsteps=12
+params$nsteps=1200
 params$mu=0.01
 params$hab_type="grid"
+params$nsteps=10000
+params$nav_rad=0.001
+params$patch_locations$b_i=30
+
+
 list2env(x=params,envir=environment())
-sim_loop1 <- f_RunMatrixLoopLite(params)
+makehab_output <- f_MakeHabitat(nx=nx,ny=ny,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
+                                hab_type=hab_type,nav_rad=nav_rad,numCores=parallelly::availableCores())
+sim_loop1 <- f_RunMatrixLoopLite(params,show_plot = TRUE,makehab_output=makehab_output)
+
+f_PlotOutput_Lite_Points(sim_loop1)
+
 
 plot(1:nsteps,sim_loop1$output_list$df_eff$kernmean_mean,type='l')
 plot(1:nsteps,sim_loop1$output_list$df_abund$abund,type='l')

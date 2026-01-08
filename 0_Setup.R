@@ -15,6 +15,8 @@ library(data.table)
 library(parallel)
 library(parallelly)
 library(ape)
+library(sf)
+library(ggspatial)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSparse.R')

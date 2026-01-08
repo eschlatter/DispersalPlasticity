@@ -115,9 +115,8 @@ theta_start <- 1 # index in (v_thetas) of scale parameter initial value
 v_p <- -2:2
 p_start <- 3 # index (in v_p) of plasticity parameter initial value
 mu <- 0.01 # mutation frequency
-b <- 8000 # reproductive output
-K <- NULL # defined later
 disturb_prob=0
+nav_rad=1.0 # navigation radius, in km
 keep=list("abund","p","kern")
 
 anemones <- read.csv('seascapes/Field data/DispersalPlasticity_anemones_metadata.csv')
@@ -127,12 +126,14 @@ patch_locations <- patch_locations %>%
   mutate(id=1:nrow(patch_locations)) %>%
   dplyr::select(id,x,y)
 patch_locations$K_i <- 1
+patch_locations$b_i <- 30000
+map_sf <- NULL
 
 params <- list(nx=nx,ny=ny,nsteps=nsteps,
                v_alphas=v_alphas,v_thetas=v_thetas,v_p=v_p,
                alpha_start=alpha_start,theta_start=theta_start,p_start=p_start,
-               mu=mu,b=b,K=K,
-               disturb_prob=disturb_prob,patch_locations=patch_locations,keep=keep,seed=NULL)
+               mu=mu,disturb_prob=disturb_prob,nav_rad=nav_rad,
+               patch_locations=patch_locations,keep=keep,seed=NULL)
 params$hab_type="points"
 save(params,file='params/ParSet4.RData')
 

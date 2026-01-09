@@ -741,7 +741,7 @@ f_PlotOutput_Lite_Points <- function(output_lite){
   list2env(output_lite$params,environment())
   
   ## plot map with navigation radius circles
-  circs=st_buffer(patch_sf,dist=nav_rad) # dist is the radius of the circle, in meters
+  circs=st_buffer(patch_sf,dist=nav_rad*1000) # dist is the radius of the circle, in meters
   if(!exists("map_sf")) map_sf=NULL
   g_map <- ggplot()+
     geom_sf(data=map_sf)+

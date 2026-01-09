@@ -9,7 +9,7 @@ params$nsteps=1200
 params$mu=0.01
 params$hab_type="grid"
 params$nsteps=10000
-params$nav_rad=0.001
+params$nav_rad=0.1
 params$patch_locations$b_i=30
 
 

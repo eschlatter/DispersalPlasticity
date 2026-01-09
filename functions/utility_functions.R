@@ -110,24 +110,25 @@ f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,
 # or generates uniform grid (if patch_locations==NULL)
 # returns connectivity matrices and related objects for use in simulation
 # hab_type = "grid" (grid of habitat patches with x-y coordinates), "points" (anemone locations with gps points)
-# nav_rad = navigation radius (in km). Used when hab_type="points".
+# nav_rad = navigation radius (in km). Used when hab_type="points". When hab_type="grid", it's set to 1 so the patch_angle calculation still works.
 # patch_locations can be:
 #   1) NULL: generates an nx-x-ny grid
 #   2) if hab_type=="grid", a dataframe
 #   3) if hab_type=="points", a shapefile
 f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE,hab_type="grid",nav_rad=1,numCores=1){
+  
   # list of patch locations and IDs
   # (dimensions: npatch x 3)
-  # "location" is the center of the 
+  # if it's being generated here, "location" is the center of the grid square
   if(is.null(patch_locations)){ # if not specified by an input map, then make one
     patch_locations <- expand.grid(y=1:ny,x=1:nx) %>% # do y first so that patches are ordered columnwise, like the way R fills a matrix
       rowid_to_column(var='id')
   }
   npatch <- nrow(patch_locations)
   
-  # a "map" of the patch numbers, spatially arranged
-  # (dimensions: nx x ny)
   if(hab_type=="grid"){
+    # a "map" of the patch numbers, spatially arranged
+    # (dimensions: nx x ny)
     patch_map <- matrix(nrow=ny,ncol=nx)
     for(i in 1:npatch){
       patch_map[patch_locations$y[i],patch_locations$x[i]] <- patch_locations$id[i]
@@ -141,12 +142,7 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
       patch_dists[i,] = sqrt((patch_locations$x[i]-patch_locations$x)^2+(patch_locations$y[i]-patch_locations$y)^2)
     }
     
-    # a matrix of the size of the pie wedge between each patch (i.e., theta in polar coords -- not theta of the dispersal kernel)
-    # assuming the width of the cell at the given distance is 1: not quite correct most of the time, but probably close enough
-    # (dimensions: npatch x npatch)
-    patch_angles <- suppressWarnings(2*asin(1/(2*patch_dists))/(2*pi))
-    patch_angles[is.nan(patch_angles)] <- 1
-    
+    # set objects that are mainly used in points mode
     overlap_discount=rep(1,times=npatch)
     patch_sf=NULL
   }
@@ -168,12 +164,6 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
     units(patch_dists) <- "km"
     patch_dists <- matrix(as.numeric(patch_dists),nrow=nrow(patch_dists))
     
-    # a matrix of the size of the pie wedge between each patch (i.e., theta in polar coords -- not theta of the dispersal kernel)
-    # assuming the width of the cell at the given distance is 1: not quite correct most of the time, but probably close enough
-    # (dimensions: npatch x npatch)
-    patch_angles <- suppressWarnings(2*asin(nav_rad/(2*patch_dists))/(2*pi))
-    patch_angles[is.nan(patch_angles)] <- 1
-    
     # if patches aren't on a grid,
     # find the overlap of each patch's basin of attraction with other basins
     # first define the basins
@@ -184,30 +174,14 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
     all_overlaps <- unlist(all_overlaps)
     overlap_discount <- 1/(1+all_overlaps)
     
+    # set objects that are mainly used in grid mode
     patch_map=NULL
   }
   
-  
-  # connectivity matrices
-  # (dimensions: nalpha x ntheta x npatch x npatch)
-  # Should we calculate them for each possible kernel up front?
-  # There are probably some kernels that won't get used, so this might be a bit wasteful. But, for now, let's do it. We can be more efficient later.
-  if(conn_out==TRUE){
-    conn_matrices <- array(NA,dim=c(length(v_alphas),length(v_thetas),npatch,npatch))
-    for(i_alpha in 1:length(v_alphas)){
-      for(i_theta in 1:length(v_thetas)){
-        conn_matrices[i_alpha,i_theta,,] <- f_GetConnectivityMatrix(v_alphas[i_alpha],v_thetas[i_theta],patch_dists,patch_angles)
-      } # i_theta
-    } # i_alpha
-    
-    return(list(patch_locations=patch_locations,
-                patch_map=patch_map,
-                patch_dists=patch_dists,
-                patch_angles=patch_angles,
-                conn_matrices=conn_matrices,
-                npatch=npatch))
-    
-  }
+  # a matrix of the angle of the pie wedge between each patch
+  # (dimensions: npatch x npatch)
+  patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists)/(2*pi))
+  patch_angles[is.nan(patch_angles)] <- 1
   
   return(list(patch_locations=patch_locations,
               patch_map=patch_map,
@@ -229,26 +203,15 @@ f_GetConnectivityMatrix <- function(alpha, theta, patch_dists, patch_angles){
 
 # output: rates of dispersal from each patch to each other patch
 # Connectivity[i,j] = the proportion of dispersers from patch j that land in patch i
-f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angles,overlap_discount,numCores){
+f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angles,overlap_discount,nav_rad,numCores){
   npatch=length(alpha)
-  list_cms <- list(length=npatch)
   connectivity_matrix <- mclapply(1:npatch,function(i) cm_i <- overlap_discount[i]*patch_angles[i,]*
                                     (pgamma(patch_dists[i,]+nav_rad,shape=alpha[i],scale=theta[i])-
-                                       pgamma(patch_dists[i,]-nav_rad,shape=alpha[i],scale=theta[i])),
+                                       pgamma(pmax(patch_dists[i,]-nav_rad,0),shape=alpha[i],scale=theta[i])),
                                   mc.cores=numCores)
   connectivity_matrix <- do.call(rbind,connectivity_matrix)
-  #colnames(connectivity_matrix) <- 1:npatch
   return(connectivity_matrix)
 }
-
-# for(i in 1:length(alpha)){ # for each from patch
-#   # vector of proportion of individuals from patch i that land in each patch
-#   cm_i <- patch_angles[i,]*(pgamma(patch_dists[i,]+0.5,shape=alpha[i],scale=theta[i])-
-#                               pgamma(patch_dists[i,]-0.5,shape=alpha[i],scale=theta[i]))
-#   list_cms[[i]] <- cm_i
-# }
-# connectivity_matrix <- matrix(unlist(list_cms),nrow=length(alpha))
-#comp_results <- mclapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop),mc.cores = numCores)
 
 # inputs:
 #   matrices patch_dists and patch_angles

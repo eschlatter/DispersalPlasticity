@@ -258,7 +258,11 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       
       # calculate the connectivity matrix among patches, given the group parameter values and patch-level K's
       # (and accounting for the patch population x per capita output b_i from each patch)
-      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas, nav_rad, numCores) # calculate this matrix, if it hasn't been used before
+      if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g=g, group_index=group_index, patch_locations=patch_locations,
+                                                                                patch_dists=patch_dists, patch_angles=patch_angles, 
+                                                                                overlap_discount=overlap_discount, 
+                                                                                v_p=v_p, v_alphas=v_alphas, v_thetas=v_thetas, 
+                                                                                nav_rad=nav_rad, numCores=numCores) # calculate this matrix, if it hasn't been used before
       conn_mat <- all_conn_mats[[g]] # otherwise, grab it from the list
       to_patch <- (1-p_penalty)*patch_locations$b_i*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
       

@@ -17,6 +17,7 @@ library(parallelly)
 library(ape)
 library(sf)
 library(ggspatial)
+library(units)
 
 source('functions/f_RunIBM.R')
 source('functions/f_RunMatrixSparse.R')

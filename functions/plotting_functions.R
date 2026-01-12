@@ -757,7 +757,6 @@ f_PlotOutput_Lite_Points <- function(output_lite){
     geom_line()+
     theme_minimal()+
     labs(title="Population size", x="time",y="population size")
-  #  print(g_abund)
   
   ## plot p (mean +/- sd) at each timestep
   p_dat <- output_lite$output_list$df_p[2:nsteps,]
@@ -768,7 +767,6 @@ f_PlotOutput_Lite_Points <- function(output_lite){
     geom_ribbon(aes(ymin=p_lower,ymax=p_upper),alpha=0.15)+
     theme_minimal()+
     labs(title="Plasticity parameter",x='time',y='p (mean +/- sd)')
-
 
   ### Plot fundamental and effective kernel means (mean +/- sd) at each timestep
   fund_dat <- output_lite$output_list$df_fund[2:nsteps,]
@@ -782,42 +780,13 @@ f_PlotOutput_Lite_Points <- function(output_lite){
   g_kernmeans <- ggplot(fund_dat,aes(x=t))+
     geom_line(aes(y=kernmean_mean,color="Fundamental"))+
     geom_ribbon(aes(ymin=fund_mean_lower,ymax=fund_mean_upper,fill="Fundamental"),alpha=0.15)+
-#    geom_line(data=eff_dat,aes(y=kernmean_mean,color="Effective"))+
-#    geom_ribbon(data=eff_dat,aes(ymin=eff_mean_lower,ymax=eff_mean_upper,fill="Effective"),alpha=0.15)+
+    geom_line(data=eff_dat,aes(y=kernmean_mean,color="Effective"))+
+    geom_ribbon(data=eff_dat,aes(ymin=eff_mean_lower,ymax=eff_mean_upper,fill="Effective"),alpha=0.15)+
     theme_minimal()+
     labs(title="Fundamental and effective kernel means",x='time',y='kernel mean (mean +/- sd at each timestep)')
-  #  print(g_kernmeans)
   
-  # dat$fund_mode_lower <- dat$fund_mode_mean-sqrt(dat$fund_mode_var)
-  # dat$fund_mode_upper <- dat$fund_mode_mean+sqrt(dat$fund_mode_var)
-  # dat$eff_mode_lower <- dat$eff_mode_mean-sqrt(dat$eff_mode_var)
-  # dat$eff_mode_upper <- dat$eff_mode_mean+sqrt(dat$eff_mode_var)
-  # ## plot properties of the fundamental kernel at each timestep
-  # p_fundkern <- ggplot(dat,aes(x=t))+
-  #   geom_line(aes(y=fund_mode_mean,color="mode"))+
-  #   geom_ribbon(aes(ymin=fund_mode_lower,ymax=fund_mode_upper,fill="mode"),alpha=0.15)+
-  #   geom_line(aes(y=fund_mean_mean,color="mean"))+
-  #   geom_ribbon(aes(ymin=fund_mean_lower,ymax=fund_mean_upper,fill="mean"),alpha=0.15)+
-  #   theme_minimal()+
-  #   labs(title="Fundamental kernel",x='time',y='kernel property (mean +/- sd)')
-  # ## plot properties of the effective kernel at each timestep
-  # p_effkern <- ggplot(dat,aes(x=t))+
-  #   geom_line(aes(y=eff_mode_mean,color="mode"))+
-  #   geom_ribbon(aes(ymin=eff_mode_lower,ymax=eff_mode_upper,fill="mode"),alpha=0.15)+
-  #   geom_line(aes(y=eff_mean_mean,color="mean"))+
-  #   geom_ribbon(aes(ymin=eff_mean_lower,ymax=eff_mean_upper,fill="mean"),alpha=0.15)+
-  #   theme_minimal()+
-  #   labs(title="Effective kernel",x='time',y='kernel property (mean +/- sd)')
-  # grid.arrange(p_fundkern,p_effkern,ncol=1)
-  
-  # ### Plot spatial autocorrelation (global Moran's I) of both fundamental and effective kernel means
-  # g_autocorr <- ggplot(dat,aes(x=t))+
-  #   geom_line(aes(y=fund_mean_moran,color='Fundamental'))+
-  #   geom_line(aes(y=eff_mean_moran,color="Effective"))+
-  #   theme_minimal()+
-  #   labs(title="Spatial autocorrelation of kernel means",x = "time", y="Global Moran's I")
-  
-  grid.arrange(g_map,g_abund,nrow=1)
+  ### Arrange all plots
+  grid.arrange(g_map,g_abund,g_p,g_kernmeans,nrow=2)
 }
 
 f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){

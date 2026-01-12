@@ -1,6 +1,6 @@
 source('0_Setup.R')
 
-########## Param set Array1: ########## 
+########## Param set Array1 ########## 
 nx <- NULL # defined later
 ny <- NULL # defined later
 nsteps <- 10000 # timesteps
@@ -79,11 +79,9 @@ params <- list(nx=nx,ny=ny,nsteps=nsteps,
                mu=mu,b=b,K=K,
                island_lims=island_lims, mainland_lims=mainland_lims,
                disturb_prob=0,patch_locations=patch_locations,seed=NULL)
-
 #save(params,file='params/VariableKPars.RData')
 
 ########## Param set 3: new constant-K overlay with existing base map ########## 
-## new constant-K overlay with existing base map
 source('0_Setup.R')
 load('params/VariableKPars.RData')
 
@@ -99,7 +97,6 @@ params <- list(nx=nx,ny=ny,nsteps=nsteps,
                alpha_start=alpha_start,theta_start=theta_start,p_start=p_start,
                mu=mu,b=b,K=K,
                disturb_prob=0,patch_locations=patch_locations,seed=NULL)
-
 #save(params,file='params/UniformKPars.RData')
 
 ########## Param set 4: use real anemone locations ########## 
@@ -139,7 +136,7 @@ save(params,file='params/ParSet4.RData')
 
 
 
-# -----------------------------------------------------
+# -------------- Scratch/old --------------
 # # load parameters
 # load('params/ParSet1.RData')
 # list2env(pars_save,envir=environment())

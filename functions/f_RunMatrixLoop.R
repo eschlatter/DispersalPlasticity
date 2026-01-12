@@ -327,7 +327,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       
       if("kern" %in% keep){
         Pij_K <- matrix(patch_locations$K_i,byrow=FALSE,nrow=npatch,ncol=ngroups)
-        Pij_eff <- f_plasticityK_new(Pij_K,Pij_p,Pij_alpha,Pij_theta,length(v_alphas),length(v_thetas)) # indices, not values
+        Pij_eff <- f_plasticityK(Pij_K,Pij_p,Pij_alpha,Pij_theta,length(v_alphas),length(v_thetas)) # indices, not values
         
         ## fundamental kernel properties (i.e., based on inherited alpha and theta, but not plasticity)
         ### 1. kernel mode

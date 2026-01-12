@@ -1,45 +1,30 @@
 library(gridExtra)
 
-# for current p, b, alpha, and theta, returns effective alpha and theta values, given plasticity
-# b, p, alpha, theta: current set of parameter values
-# b_bad, b_good, b_neutral: values of b that trigger plastic responses
-# n_alpha, n_theta: length of v_alpha and v_theta; used to avoid exceeding the maximum parameter values with plastic response
-f_plasticity <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_good=9, n_alpha=5, n_theta=5){
-  if(b_good!=b_neutral){ # check for the possibility that there isn't variation in b. Assuming there is:
-    alpha_add <- round((b_neutral-b_i)/(b_good-b_neutral))} # calculate what to add to the alpha index, based on plasticity. It's -1, 0, or +1.
-  else alpha_add <- 0
-  alpha_plastic <- oob_squish(alpha_i+round(p_i)*alpha_add, c(1,n_alpha))
-  theta_plastic <- theta_i
-  return(list(alpha_plastic=alpha_plastic, theta_plastic=theta_plastic))
-}
+# ## plasticity function: plasticity in dispersal kernel in response to K (carrying capacity) of patch
+# # b, p, alpha, theta: current set of parameter values
+# # b_bad, b_good, b_neutral: values of b that trigger plastic responses
+# # n_alpha, n_theta: length of v_alpha and v_theta; used to avoid exceeding the maximum parameter values with plastic response
+# f_plasticity <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_good=9, n_alpha=5, n_theta=5){
+#   if(b_good!=b_neutral){ # check for the possibility that there isn't variation in b. Assuming there is:
+#     alpha_add <- round((b_neutral-b_i)/(b_good-b_neutral))} # calculate what to add to the alpha index, based on plasticity. It's -1, 0, or +1.
+#   else alpha_add <- 0
+#   alpha_plastic <- oob_squish(alpha_i+round(p_i)*alpha_add, c(1,n_alpha))
+#   theta_plastic <- theta_i
+#   return(list(alpha_plastic=alpha_plastic, theta_plastic=theta_plastic))
+# }
+# f_plasticity2 <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_good=9, n_alpha=5, n_theta=5){
+#   if(b_good!=b_neutral){ # check for the possibility that there isn't variation in b. Assuming there is:
+#     alpha_add <- round((b_neutral-b_i)/(b_good-b_neutral))} # calculate what to add to the alpha index, based on plasticity. It's -1, 0, or +1.
+#   else alpha_add <- 0
+#   alpha_plastic <- oob_squish(alpha_i+round(p_i)*alpha_add, c(1,n_alpha))
+#   theta_plastic <- theta_i
+#   return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
+# }
 
-f_plasticity2 <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_good=9, n_alpha=5, n_theta=5){
-  if(b_good!=b_neutral){ # check for the possibility that there isn't variation in b. Assuming there is:
-    alpha_add <- round((b_neutral-b_i)/(b_good-b_neutral))} # calculate what to add to the alpha index, based on plasticity. It's -1, 0, or +1.
-  else alpha_add <- 0
-  alpha_plastic <- oob_squish(alpha_i+round(p_i)*alpha_add, c(1,n_alpha))
-  theta_plastic <- theta_i
-  return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
-}
-
-f_plasticityK <- function(K_i, p, alpha, theta, n_alpha=5, n_theta=5){
-  if(length(unique(K_i))>1){ # check for the possibility that there isn't variation in K. Assuming there is:
-    bad_thresh <- min(K_i)+(1/3)*(max(K_i)-min(K_i))
-    good_thresh <- min(K_i)+(2/3)*(max(K_i)-min(K_i))
-    alpha_add <- case_when(K_i<bad_thresh ~ -1, #  decide what to add to the alpha index, based on plasticity. It's -1, 0, or +1.
-                           K_i<=good_thresh ~ 0,
-                           K_i>good_thresh ~ 1)
-  }
-  else alpha_add <- rep(0,length(K_i))
-  alpha_plastic <- oob_squish(alpha+round(p)*alpha_add, c(1,n_alpha))
-  theta_plastic <- theta
-  return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
-}
-
-## improve the plasticity function
-## it still takes vectors of values for K, p, alpha, and theta. 
+## plasticity function: plasticity in dispersal kernel in response to b (reproductive output) of patch
+## inputs: vectors of values for K, p, alpha, and theta. 
 ## p should be the actual value of p; alpha and theta should be indices in v_alpha and v_theta
-f_plasticityK_new <- function(K, p, alpha, theta, n_alpha=5, n_theta=5, Kmin=NULL, Kmax=NULL){
+f_plasticityK <- function(K, p, alpha, theta, n_alpha=5, n_theta=5, Kmin=NULL, Kmax=NULL){
   # if alpha and theta are scalars, recycle them to vectors of same length as K
   if(length(alpha)==1) alpha=rep_len(alpha,length(K))
   if(length(theta)==1) theta=rep_len(theta,length(K))
@@ -235,7 +220,7 @@ f_GetConnectivityMatrix_vectorized <- function(alpha, theta, patch_dists, patch_
 f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas,nav_rad,numCores){
   v <- group_index[g,]
   # compute effective parameters for each patch with plasticity (once per group)
-  eff_params <- f_plasticityK_new(patch_locations$K_i, 
+  eff_params <- f_plasticityK(patch_locations$K_i, 
                                   v_p[v$p], 
                                   v$alpha, 
                                   v$theta,
@@ -249,58 +234,58 @@ f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, pa
                                                patch_dists=patch_dists,patch_angles=patch_angles,overlap_discount=overlap_discount,nav_rad=nav_rad,numCores=numCores)
 }
 
-# Take a vector of a time series, and identify the point when it has reached equilibrium
-# this is an ad hoc method, but it seems like it kind of works:
-#   it's at least good at cutting out enough of the early portion of the time series.
-#   less good at detecting smaller changes in equilibrium level after the first move away from initial conditions.
-# inputs: v_t, vector of time series data
-# returns: equil_start, timepoint where equilibrium has been reached
-f_FindEquil <- function(v_t,showplot=FALSE){
-  nt=length(v_t)
-  equil_pt <- NULL
-  
-  for(i in 1:19){ # try up to 19 possible timepoints
-    # split data into training and testing
-    end_train=i*nt/20
-    train <- v_t[1:end_train]
-    test <- v_t[(end_train+1):nt]
-    
-    # make an ARIMA model with the training data
-    m1 <- auto.arima(train,seasonal=FALSE)
-    # use it to forecast for the length of the test data
-    m1_fore <- forecast(m1,nt-end_train,level=c(95))
-    
-    # check if the test data lies in the model's bounds of prediction
-    # if it has reached equilibrium, then we're just predicting the mean with increasingly large confidence intervals -- that's ok.
-    # if it hasn't reached equilibrium yet, then either 1) there's a trend in the training data that doesn't continue in the test data,
-    # or 2) there's a high-order autoregression signal in the training data that means the confidence bounds are really huge
-    # we test for both possibilities below
-    in_bounds <- (test>m1_fore$lower)&(test<m1_fore$upper)
-    pct_in_bounds <- sum(in_bounds)/length(in_bounds)
-    max_CI_width <- as.numeric(tail(m1_fore$upper,1))-as.numeric(tail(m1_fore$lower,1))
-    #test_autocorr_strength <- m1$arma[1]<3
-    test_autocorr_strength <- max_CI_width<(100*diff(range(v_t)))
-    
-    # if so, and if the bounds of prediction aren't enormous, then choose this timepoint and stop the loop
-    # (i.e., the time series has reached equilibrium by the end of the training segment. We can use the test segment as equilibrium data.)
-    if(pct_in_bounds>0.95 & (test_autocorr_strength==TRUE)){
-      equil_pt <- end_train
-      break
-    } 
-  }
-  
-  if(showplot==TRUE & !is.null(equil_pt)){
-    par(mfrow=c(2,1))
-    plot(1:nt,v_t,type='l')
-    lines(1:length(train),train,col='blue')
-    plot(m1_fore)
-    lines(1:nt,v_t)
-    par(mfrow=c(1,1))
-  }
-  
-  if(is.null(equil_pt)) print("Warning: no equilibrium found")
-  return(equil_pt) # if no equilibrium point is found, then the returned value is nt.
-}
+# # Take a vector of a time series, and identify the point when it has reached equilibrium
+# # this is an ad hoc method, but it seems like it kind of works:
+# #   it's at least good at cutting out enough of the early portion of the time series.
+# #   less good at detecting smaller changes in equilibrium level after the first move away from initial conditions.
+# # inputs: v_t, vector of time series data
+# # returns: equil_start, timepoint where equilibrium has been reached
+# f_FindEquil <- function(v_t,showplot=FALSE){
+#   nt=length(v_t)
+#   equil_pt <- NULL
+#   
+#   for(i in 1:19){ # try up to 19 possible timepoints
+#     # split data into training and testing
+#     end_train=i*nt/20
+#     train <- v_t[1:end_train]
+#     test <- v_t[(end_train+1):nt]
+#     
+#     # make an ARIMA model with the training data
+#     m1 <- auto.arima(train,seasonal=FALSE)
+#     # use it to forecast for the length of the test data
+#     m1_fore <- forecast(m1,nt-end_train,level=c(95))
+#     
+#     # check if the test data lies in the model's bounds of prediction
+#     # if it has reached equilibrium, then we're just predicting the mean with increasingly large confidence intervals -- that's ok.
+#     # if it hasn't reached equilibrium yet, then either 1) there's a trend in the training data that doesn't continue in the test data,
+#     # or 2) there's a high-order autoregression signal in the training data that means the confidence bounds are really huge
+#     # we test for both possibilities below
+#     in_bounds <- (test>m1_fore$lower)&(test<m1_fore$upper)
+#     pct_in_bounds <- sum(in_bounds)/length(in_bounds)
+#     max_CI_width <- as.numeric(tail(m1_fore$upper,1))-as.numeric(tail(m1_fore$lower,1))
+#     #test_autocorr_strength <- m1$arma[1]<3
+#     test_autocorr_strength <- max_CI_width<(100*diff(range(v_t)))
+#     
+#     # if so, and if the bounds of prediction aren't enormous, then choose this timepoint and stop the loop
+#     # (i.e., the time series has reached equilibrium by the end of the training segment. We can use the test segment as equilibrium data.)
+#     if(pct_in_bounds>0.95 & (test_autocorr_strength==TRUE)){
+#       equil_pt <- end_train
+#       break
+#     } 
+#   }
+#   
+#   if(showplot==TRUE & !is.null(equil_pt)){
+#     par(mfrow=c(2,1))
+#     plot(1:nt,v_t,type='l')
+#     lines(1:length(train),train,col='blue')
+#     plot(m1_fore)
+#     lines(1:nt,v_t)
+#     par(mfrow=c(1,1))
+#   }
+#   
+#   if(is.null(equil_pt)) print("Warning: no equilibrium found")
+#   return(equil_pt) # if no equilibrium point is found, then the returned value is nt.
+# }
 
 # used in lapply in f_MakeHabitat:
 # find area of overlap of one circle (j) with all other circles

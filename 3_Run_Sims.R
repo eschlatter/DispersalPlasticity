@@ -20,8 +20,8 @@ list2env(x=params,envir=environment())
 makehab_output <- f_MakeHabitat(nx=nx,ny=ny,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
                                 hab_type=hab_type,nav_rad=nav_rad,numCores=parallelly::availableCores())
 # run sim
-# I've been working with f_RunMatrixLoopLite, which doesn't store all the population info at each timestep; it only stores summary stats.
-# We may want to go back to keeping everything at each timestep (that's f_RunMatrixLoop), at least temporarily. But I haven't updated that version of the function yet.
+# I've been working with f_RunMatrixLoopLite (in functions/f_RunMatrixLoop.R), which doesn't store all the population info at each timestep; it only stores summary stats.
+# We'll probably want to go back to keeping everything at each timestep (that's f_RunMatrixLoop), at least temporarily. But I haven't updated that version of the function yet.
 sim_loop1 <- f_RunMatrixLoopLite(params,show_plot = TRUE,makehab_output=makehab_output)
 # quick diagnostic plots
 f_PlotOutput_Lite_Points(sim_loop1)

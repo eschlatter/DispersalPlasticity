@@ -1,0 +1,140 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-11-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+doing a little reading on memory in R
+https://adv-r.hadley.nz/names-values.html
+
+# Profiling functions
+```{r}
+Rprof(filename='profile_matrix.out')
+sim_loop1 <- f_RunMatrixLoop(params)
+Rprof(NULL)
+
+summaryRprof('profile_matrix.out')
+```
+```{r}
+Rprof(filename='profile_matrix_parallel.out')
+sim_loop1 <- f_RunMatrixLoop(params)
+Rprof(NULL)
+
+summaryRprof('profile_matrix_parallel.out')
+```
+
+# Benchmarking -- useful!
+```{r}
+library(lobstr)
+library(bench)
+library(ggplot2)
+
+x <- data.frame(matrix(runif(5 * 1e4), ncol = 5))
+medians <- vapply(x, median, numeric(1))
+
+# copy-on-modify: modifying data frames makes a lot of copies!
+tracemem(x)
+for (i in seq_along(medians)) {
+  x[[i]] <- x[[i]] - medians[[i]]
+}
+untracemem(x)
+
+# two ways to do the same thing, with dataframes and lists
+f_med_1 <- function(x,medians){
+  for (i in seq_along(medians)) {
+    x[[i]] <- x[[i]] - medians[[i]]
+  }
+  return(as.list(x))
+}
+
+f_med_2 <- function(x,medians){
+  y <- as.list(x)
+  for (i in 1:length(y)) {
+    y[[i]] <- y[[i]] - medians[[i]]
+  }
+  return(y)
+}
+
+# compare
+bench::mark(
+  f_med_1(x,medians),
+  f_med_2(x,medians)
+)
+
+# compare as the size of the task increases
+elts <- seq(from=400,to=2000,by=400)
+results <- bench::press(
+  elts = elts, # needs to be equals, not assignment operator! It's a function argument.
+  {
+    x <- data.frame(matrix(runif(elts * 1e4), ncol = elts))
+    medians <- vapply(x, median, numeric(1))
+    bench::mark(
+      method_df = f_med_1(x,medians),
+      method_list = f_med_2(x,medians)
+    )
+  }
+)
+
+ggplot2::autoplot(results)
+
+ggplot(results,aes(x=elts,y=median,color=as.character(expression)))+
+  geom_line()+
+  labs(y='median execution time')
+
+ggplot(results,aes(x=elts,y=mem_alloc,color=as.character(expression)))+
+  geom_line()+
+  labs(y='memory allocation')
+
+ggplot(results,aes(x=elts,y=n_gc,color=as.character(expression)))+
+  geom_line()+
+  labs(y='garbage collections')
+```
+# Benchmarking -- useful!
+```{r}
+library(lobstr)
+library(bench)
+library(ggplot2)
+
+source('functions/f_RunMatrixLoop.R')
+source('1_Generate_Param_Sets.R')
+
+# compare
+bench::mark(
+  f_RunMatrixLoop(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL),
+  f_RunMatrixLoopOpt(nx,ny,nsteps,v_alphas,v_thetas,v_p,alpha_start,theta_start,p_start,mu,b,K,disturb_prob=0,patch_locations=NULL),
+  check=FALSE
+)
+
+# compare as the size of the task increases
+elts <- seq(from=400,to=2000,by=400)
+results <- bench::press(
+  elts = elts, # needs to be equals, not assignment operator! It's a function argument.
+  {
+    x <- data.frame(matrix(runif(elts * 1e4), ncol = elts))
+    medians <- vapply(x, median, numeric(1))
+    bench::mark(
+      method_df = f_med_1(x,medians),
+      method_list = f_med_2(x,medians)
+    )
+  }
+)
+
+ggplot2::autoplot(results)
+
+ggplot(results,aes(x=elts,y=median,color=as.character(expression)))+
+  geom_line()+
+  labs(y='median execution time')
+
+ggplot(results,aes(x=elts,y=mem_alloc,color=as.character(expression)))+
+  geom_line()+
+  labs(y='memory allocation')
+
+ggplot(results,aes(x=elts,y=n_gc,color=as.character(expression)))+
+  geom_line()+
+  labs(y='garbage collections')
+```
+

@@ -21,7 +21,7 @@ library(gridExtra)
 #   return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
 # }
 
-## plasticity function: plasticity in dispersal kernel in response to b (reproductive output) of patch
+## plasticity function: plasticity in dispersal kernel in response to K (carrying capacity) of patch
 ## inputs: vectors of values for K, p, alpha, and theta. 
 ## p should be the actual value of p; alpha and theta should be indices in v_alpha and v_theta
 f_plasticityK <- function(K, p, alpha, theta, n_alpha=5, n_theta=5, Kmin=NULL, Kmax=NULL){
@@ -35,6 +35,26 @@ f_plasticityK <- function(K, p, alpha, theta, n_alpha=5, n_theta=5, Kmin=NULL, K
   if(Kmin==Kmax) alpha_plastic <- alpha
   else {
     alpha_add <- round(ifelse(K<Kmin, p, ifelse(K>Kmax, -p, p-2*p*(K-Kmin)/(Kmax-Kmin))))
+    alpha_plastic <- oob_squish(alpha+alpha_add, c(1,n_alpha))
+  }
+  theta_plastic <- theta
+  return(list(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
+}
+
+## plasticity function: plasticity in dispersal kernel in response to b (reproductive output) of patch
+## inputs: vectors of values for b, p, alpha, and theta. 
+## p should be the actual value of p; alpha and theta should be indices in v_alpha and v_theta
+f_plasticityb <- function(b, p, alpha, theta, n_alpha=5, n_theta=5, bmin=NULL, bmax=NULL){
+  # if alpha and theta are scalars, recycle them to vectors of same length as b
+  if(length(alpha)==1) alpha=rep_len(alpha,length(b))
+  if(length(theta)==1) theta=rep_len(theta,length(b))
+  # define plasticity thresholds of b, if not given
+  if(is.null(bmin)) bmin=min(b)
+  if(is.null(bmax)) bmax=max(b)
+  # if no variation in K, no plasticity
+  if(bmin==bmax) alpha_plastic <- alpha
+  else {
+    alpha_add <- round(ifelse(b<bmin, p, ifelse(b>bmax, -p, p-2*p*(b-bmin)/(bmax-bmin))))
     alpha_plastic <- oob_squish(alpha+alpha_add, c(1,n_alpha))
   }
   theta_plastic <- theta
@@ -220,7 +240,7 @@ f_GetConnectivityMatrix_vectorized <- function(alpha, theta, patch_dists, patch_
 f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas,nav_rad,numCores){
   v <- group_index[g,]
   # compute effective parameters for each patch with plasticity (once per group)
-  eff_params <- f_plasticityK(patch_locations$K_i, 
+  eff_params <- f_plasticityb(patch_locations$b_i, 
                                   v_p[v$p], 
                                   v$alpha, 
                                   v$theta,

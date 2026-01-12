@@ -123,7 +123,7 @@ patch_locations <- patch_locations %>%
   mutate(id=1:nrow(patch_locations)) %>%
   dplyr::select(id,x,y)
 patch_locations$K_i <- 1
-patch_locations$b_i <- 30000
+patch_locations$b_i <- 3
 map_sf <- NULL
 
 params <- list(nx=nx,ny=ny,nsteps=nsteps,

@@ -11,8 +11,8 @@ load('params/ParSet4.RData')
 # params$mu=0.01 # mutation rate
 # params$hab_type="grid" # grid-style versus point-style spatial sim
 params$nsteps=10000 # number of simulation timesteps
-params$nav_rad=0.1 # navigation radius (in km)
-params$patch_locations$b_i=30 # number of offspring per parent (this is a vector with a value for each patch)
+params$nav_rad=1 # navigation radius (in km)
+params$patch_locations$b_i <- sample(1:1000,size=nrow(params$patch_locations),replace = TRUE) # number of offspring per parent
 
 #### Run sim
 list2env(x=params,envir=environment())

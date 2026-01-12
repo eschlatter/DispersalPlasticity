@@ -13,10 +13,10 @@ sim_index_order <- arrange(sim_index,Kmap) %>%
 sim_index_order$adds <- rep(-0.2+0.005*1:27,7)
 sim_index_order <- sim_index_order[,c('Run','adds')]
 sim_index <- left_join(sim_index,sim_index_order,by='Run')
-sim_index$Run <- as.character(sim_index$Run)
+#sim_index$Run <- as.character(sim_index$Run)
 
 ## get the names of files containing the data
-filenames <- data.frame(name=list.files(path="output/array3"))%>%
+filenames <- data.frame(name=list.files(path="output/array4"))%>%
   filter(grepl(".RData",name))
 files <- filenames$name[1:189]
 files_constant <- filenames$name[190:192]
@@ -30,7 +30,7 @@ run_times <- data.frame(user.self=numeric(),sys.self=numeric(),elapsed=numeric()
 
 ## get each file, put its data into the storage structures
 for(file_i in 1:length(files)){
-  load(paste0('output/array3/',files[file_i]))
+  load(paste0('output/array4/',files[file_i]))
   runnum <- base::strsplit(files[file_i],"_")[[1]][1] %>% as.integer()
   list_p[[file_i]] <- cbind(sim_out$output_list$df_p,run=runnum)
   list_abund[[file_i]] <- cbind(sim_out$output_list$df_abund,run=runnum)
@@ -40,7 +40,7 @@ for(file_i in 1:length(files)){
 }
 
 for(file_i in 1:length(files_constant)){
-  load(paste0('output/array3/',files_constant[file_i]))
+  load(paste0('output/array4/',files_constant[file_i]))
   runnum <- base::strsplit(files[file_i],"_")[[1]][1] %>% as.integer()
   list_p[[189+file_i]] <- cbind(sim_out$output_list$df_p,run=paste0('constant',file_i))
   list_abund[[189+file_i]] <- cbind(sim_out$output_list$df_abund,run=paste0('constant',file_i))
@@ -87,7 +87,12 @@ df_eff_summary <- df_eff_cut[ ,.(kernmean=mean(kernmean_mean),
                               by=run]
 df_eff_summary <- sim_index[df_eff_summary,on=c(Run="run")]
 
+save(df_abund_all,df_abund_cut,df_eff_all,df_eff_cut,df_eff_summary,
+     df_fund_all,df_fund_cut,df_fund_summary,df_p_all,df_p_cut,df_p_summary,sim_index,
+     file="output/array4/array4_processed.RData")
+
 ########### Output plots #################
+load('output/array4/array4_processed.RData')
 
 # h vs p
 ggplot(df_p_summary,aes(x=h,group=Run))+
@@ -113,9 +118,9 @@ ggplot(df_fund_summary,aes(x=h+adds,group=Run))+
   geom_point(aes(y=kernmean,color='Fundamental Kernel'),position=position_dodge(width=0.05))+
   geom_errorbar(aes(ymin=kernmean-sqrt(kernmean_var_among_t),ymax=kernmean+sqrt(kernmean_var_among_t),color='Fundamental Kernel'),
                 position=position_dodge(width=0.05))+
-  geom_point(data=df_eff_summary,aes(y=kernmean,color='Effective Kernel'),position=position_dodge(width=0.05))+
-  geom_errorbar(data=df_eff_summary,aes(ymin=kernmean-sqrt(kernmean_var_among_t),ymax=kernmean+sqrt(kernmean_var_among_t),color='Effective Kernel'),
-                position=position_dodge(width=0.05))+
+  # geom_point(data=df_eff_summary,aes(y=kernmean,color='Effective Kernel'),position=position_dodge(width=0.05))+
+  # geom_errorbar(data=df_eff_summary,aes(ymin=kernmean-sqrt(kernmean_var_among_t),ymax=kernmean+sqrt(kernmean_var_among_t),color='Effective Kernel'),
+  #               position=position_dodge(width=0.05))+
   labs(x='Habitat quality aggregation (h)',y="dispersal kernel mean\n(mean +/- sd over time)",title="Dispersal kernel mean vs Habitat aggregation")+
   theme_minimal()
 ##  within-timestep variance
@@ -131,6 +136,9 @@ ggplot(df_fund_summary,aes(x=h+adds,group=Run))+
 # pick what runs to plot
 plotruns <- filter(sim_index,Kmap==54)$Run
 plotruns <- c(180)
+
+ggplot(filter(df_abund_all,run %in% plotruns),aes(x=t,y=abund,group=as.factor(run)))+
+  geom_line(aes(color=as.factor(run)))
 
 # get subsets of the data
 df_eff_selected <- filter(df_eff_all,run %in% plotruns)

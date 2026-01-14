@@ -2,8 +2,13 @@ library(dplyr)
 library(ggplot2)
 library(ggrepel)
 library(sf)
+library(sfheaders)
 library(ggspatial)
 library(terra)
+library(raster)
+library(gdistance)
+
+############# Use actual anemone locations ################
 
 # Get reef shapefile(s) of field data collection area (downloaded from Allen Coral Atlas)
 kimbe_reef <- read_sf('seascapes/Field data/Kimbe2-20251219174118/Benthic-Map/benthic.geojson') %>%
@@ -47,3 +52,29 @@ lambda_09 <- 18.9 # exponential distribution with mean=18.9km
 lambda_11 <- 13.3 # exponential distribution with mean = 13.3km
 # that study used all of Kimbe Bay, diameter ~150km
 # our study has a long dimension of ~7km
+
+############# Simulate anemone locations on larger reef map ################
+# Get reef shapefile(s) of field data collection area (downloaded from Allen Coral Atlas)
+kimbe_reef <- read_sf('seascapes/Field data/Kimbe_large-20260114171835/Benthic-Map/benthic.geojson') %>%
+  filter(class=="Coral/Algae")
+kimbe_reef_area <- sum(st_area(kimbe_reef))
+units(kimbe_reef_area) <- "km^2" # and convert to km^2
+plot(kimbe_reef)
+
+# Get bathymetry from marmap
+kimbe_bathy <- raster("seascapes/Field data/Kimbe_large-20260114171835/Bathymetry---composite-depth/bathymetry_0.tif") # RasterLayer
+kimbe_bathy <- marmap::as.bathy(kimbe_bathy)
+
+# Place anemones randomly on reef
+anemone_spots <- st_sample(kimbe_reef,5)
+anemone_spots_df <- sfc_to_df(anemone_spots)%>%
+  mutate(depth=marmap::get.depth(kimbe_bathy,x,y,locator=FALSE)$depth) %>%
+  filter(depth>0)
+#sponge_spots <- sponge_spots[sponge_spots_df$point_id]
+
+ggplot(anemone_spots)+
+  geom_contour_filled(data=marmap::as.xyz(kimbe_bathy),aes(x=V1,y=V2,z=V3),breaks=c(1000,5,-1,-5,-10,-20,-50,-60,-5000),alpha=0.5)+
+#  scale_fill_manual(values = c("gray28","#c6dbef","#9ecae1","#6baed6","#4292c6","#2171b5","#08519c","#08306b"), 
+#                    name = "Depth(m), \n from NOAA ETOPO 2022")+
+  geom_sf(data=kimbe_reef,fill='black',color='black')+  
+  geom_sf(color='red',size=2)

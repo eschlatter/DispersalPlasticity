@@ -118,14 +118,16 @@ f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,
 # nav_rad = navigation radius (in km). Used when hab_type="points". When hab_type="grid", it's set to 1 so the patch_angle calculation still works.
 # patch_locations can be:
 #   1) NULL: generates an nx-x-ny grid
-#   2) if hab_type=="grid", a dataframe
+#   2) if hab_type=="grid", a dataframe with columns id, x, y
 #   3) if hab_type=="points", a shapefile
-f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE,hab_type="grid",nav_rad=1,numCores=1){
+# if not given a distance matrix, it'll calculate as the crow flies. If you want in-water distance, do it beforehand and pass the distance matrix.
+f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE,hab_type="grid",nav_rad=1,dists_mat=NULL){
+  numCores <- parallelly::availableCores()
   
   # list of patch locations and IDs
   # (dimensions: npatch x 3)
   # if it's being generated here, "location" is the center of the grid square
-  if(is.null(patch_locations)){ # if not specified by an input map, then make one
+  if(is.null(patch_locations) & hab_type=="grid"){ # if not specified by an input map, then make one
     patch_locations <- expand.grid(y=1:ny,x=1:nx) %>% # do y first so that patches are ordered columnwise, like the way R fills a matrix
       rowid_to_column(var='id')
   }
@@ -141,11 +143,16 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
     
     # a matrix of distances between the centers of each patch (i.e., r in polar coords)
     # (dimensions: npatch x npatch)
-    patch_dists <- matrix(nrow=npatch,ncol=npatch)
-    colnames(patch_dists) <- patch_locations$id
-    for(i in 1:npatch){
-      patch_dists[i,] = sqrt((patch_locations$x[i]-patch_locations$x)^2+(patch_locations$y[i]-patch_locations$y)^2)
+    if(is.null(dists_mat)){
+      patch_dists <- matrix(nrow=npatch,ncol=npatch)
+      colnames(patch_dists) <- patch_locations$id
+      for(i in 1:npatch){
+        patch_dists[i,] = sqrt((patch_locations$x[i]-patch_locations$x)^2+(patch_locations$y[i]-patch_locations$y)^2)
+      }
+    } else {
+      patch_dists <- dists_mat
     }
+    
     
     # set objects that are mainly used in points mode
     overlap_discount=rep(1,times=npatch)
@@ -165,9 +172,13 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
     }
     
     # calculate distances between all points, in km
-    patch_dists <- st_distance(patch_sf)
-    units(patch_dists) <- "km"
-    patch_dists <- matrix(as.numeric(patch_dists),nrow=nrow(patch_dists))
+    if(is.null(dists_mat)){
+      patch_dists <- st_distance(patch_sf)
+      units(patch_dists) <- "km"
+      patch_dists <- matrix(as.numeric(patch_dists),nrow=nrow(patch_dists))      
+    } else {
+      patch_dists <- dists_mat
+    }
     
     # if patches aren't on a grid,
     # find the overlap of each patch's basin of attraction with other basins
@@ -195,6 +206,45 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
               npatch=npatch,
               overlap_discount=overlap_discount,
               patch_sf=patch_sf))
+}
+
+
+# Given a map extent, generates the specified number of anemones at random locations on the map
+# map_extent = "small" for the study area or "large" for all of Kimbe Bay
+# n_anems = number of anemone locations to simulate
+f_SimPtsOnMap <- function(map_extent="large",n_anems=50,show_map=TRUE){
+  # load map data. Should contain:
+  # reef_sf,bathy_raster,marmap_transmat
+  if(map_extent=="large"){
+    load("seascapes/kimbe_large_20x.RData") # load the reef and bathymetry maps
+  }
+  if(map_extent=="small"){
+    load("seascapes/kimbe_small_1x.RData")
+  }
+  
+  anemone_spots <- st_sample(reef_sf,n_anems)
+  patch_locations <- sfc_to_df(anemone_spots)%>%
+    mutate(depth=marmap::get.depth(bathy_raster,x,y,locator=FALSE)$depth) %>%
+    filter(depth>0) %>%
+    dplyr::select(id=point_id,x,y)
+  
+  dists <- lc.dist(marmap_transmat,patch_locations[,c("x","y")],res='dist',meters=TRUE) #distances are in meters
+  dists_mat <- matrix(0,nrow(patch_locations),nrow(patch_locations)) # convert into matrix form
+  dists_mat[lower.tri(dists_mat,diag=FALSE)] <- dists
+  dists_mat <- dists_mat/1000 # in km. Convert after the fact, because if lc.dist works in km it rounds to the nearest km.
+  dists_mat[upper.tri(dists_mat,diag=FALSE)] <- t(dists_mat)[upper.tri(t(dists_mat),diag=FALSE)] # convert from lower tri to full
+  
+  if(show_map==TRUE){
+    g <- ggplot(anemone_spots)+
+      geom_contour_filled(data=marmap::as.xyz(bathy_raster),aes(x=V1,y=V2,z=V3),alpha=0.5)+
+      geom_sf(data=reef_sf,fill='black',color='black',alpha=0.2)+  
+      geom_sf(color='red',size=1)+
+      annotation_scale()+
+      theme_minimal()
+    print(g)
+  }
+  
+  return(list(patch_locations=patch_locations,dists_mat=dists_mat))
 }
 
 
@@ -241,11 +291,11 @@ f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, pa
   v <- group_index[g,]
   # compute effective parameters for each patch with plasticity (once per group)
   eff_params <- f_plasticityb(patch_locations$b_i, 
-                                  v_p[v$p], 
-                                  v$alpha, 
-                                  v$theta,
-                                  n_alpha = length(v_alphas),
-                                  n_theta = length(v_thetas))
+                              v_p[v$p], 
+                              v$alpha, 
+                              v$theta,
+                              n_alpha = length(v_alphas),
+                              n_theta = length(v_thetas))
   # build matrix
   # conn_mat <- f_GetConnectivityMatrix_vectorized(v_alphas[eff_params$alpha_plastic],
   #                                              v_thetas[eff_params$theta_plastic],patch_dists,patch_angles,numCores)

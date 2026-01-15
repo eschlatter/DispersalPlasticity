@@ -1,30 +1,57 @@
 source('0_Setup.R')
 
-#### Load a parameter set
-load('params/ParSet4.RData')
+#### Load a parameter set (or skip this, and just set them directly below)
+# load('params/ParSet4.RData')
+# list2env(x=params,envir=environment())
 
-#### Make adjustments to it as desired
-# params$v_p <- -2:2 # possible plasticity values
-# params$p_start <- 0 # starting plasticity index (0 = random distribution of starting values)
-# params$alpha_start <- 0 # starting alpha index (0 = random distribution of starting values)
-# params$theta_start <- 0 # starting theta index (0 = random distribution of starting values)
-# params$mu=0.01 # mutation rate
-# params$hab_type="grid" # grid-style versus point-style spatial sim
-params$nsteps=10000 # number of simulation timesteps
-params$nav_rad=1 # navigation radius (in km)
-params$patch_locations$b_i <- sample(1:1000,size=nrow(params$patch_locations),replace = TRUE) # number of offspring per parent
+#### Set parameters (or adjust them as desired, if they were loaded above)
+nsteps <- 12 # timesteps
+# dispersal kernel is a gamma distribution, shape=alpha, scale=theta
+v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
+v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
+alpha_start <- 1 # index (in v_alphas) of shape parameter initial value
+theta_start <- 1 # index in (v_thetas) of scale parameter initial value
+v_p <- seq(from=0,to=0.9,length.out=5)# values the plasticity parameter can take
+p_start <- 1 # index (in v_p) of plasticity parameter initial value
+mu <- 0.01 # mutation frequency
+disturb_prob=0
+nav_rad=0.5 # navigation radius (in km)
+hab_type="points"
+keep=list("abund","p","kern")
+
+params <- list(nsteps=nsteps,v_alphas=v_alphas,v_thetas=v_thetas,v_p=v_p,
+               alpha_start=alpha_start,theta_start=theta_start,p_start=p_start,
+               mu=mu,disturb_prob=disturb_prob,nav_rad=nav_rad,
+               keep=keep,seed=NULL,hab_type=hab_type)
+
 
 #### Run sim
 list2env(x=params,envir=environment())
-# set up habitat data structures
-makehab_output <- f_MakeHabitat(nx=nx,ny=ny,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
-                                hab_type=hab_type,nav_rad=nav_rad,numCores=parallelly::availableCores())
-# run sim
+
+### set up anemone locations
+# use a map of Kimbe Bay:
+  pts_output <- f_SimPtsOnMap(map_extent="large",n_anems=500,show_map=TRUE)
+  list2env(x=pts_output,envir=environment())
+# use a grid:
+  # patch_locations <- expand.grid(x=seq(from=1,by=0.1,length.out=10),y=seq(from=1,by=0.1,length.out=10))
+  # patch_locations$id <- 1:nrow(patch_locations)
+  # dists_mat=NULL
+
+### set b for each anemone
+patch_locations$b_i <- sample(1:1000,size=nrow(patch_locations),replace = TRUE) # number of offspring per parent
+
+### set up habitat data structures
+hab_output <- f_MakeHabitat(v_alphas=v_alphas,v_thetas=v_thetas, patch_locations=patch_locations,hab_type = "points",nav_rad=nav_rad,dists_mat=dists_mat)
+
+### run sim
 # I've been working with f_RunMatrixLoopLite (in functions/f_RunMatrixLoop.R), which doesn't store all the population info at each timestep; it only stores summary stats.
 # We'll probably want to go back to keeping everything at each timestep (that's f_RunMatrixLoop), at least temporarily. But I haven't updated that version of the function yet.
-sim_loop1 <- f_RunMatrixLoopLite(params,show_plot = TRUE,makehab_output=makehab_output)
-# quick diagnostic plots
+sim_loop1 <- f_RunMatrixLoopLite(params,show_plot = TRUE,makehab_output=hab_output)
+save(sim_loop1,file="output/20250115_sim3.RData")
+
+### quick diagnostic plots
 f_PlotOutput_Lite_Points(sim_loop1)
+
 
 
 

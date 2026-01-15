@@ -26,3 +26,24 @@ a <- f_GenerateMapWithK(base_map=NULL,K_range=c(3,10),h=0.2,k=5,p=0.3,h_base=0.8
 basemap_1 <- matrix(0,nrow=a$ny,ncol=a$nx)
 for(i in 1:nrow(a$patch_locations)) basemap_1[a$patch_locations$y[i],a$patch_locations$x[i]] <- 1
 save(basemap_1,file='seascapes/basemap1.RData')
+
+#################### Create base map (to pass to function f_SimPtsOnMap) ##########################
+
+# Get reef shapefile(s) of field data collection area (downloaded from Allen Coral Atlas)
+kimbe_reef <- read_sf('seascapes/Field data/Kimbe_large-20260114171835/Benthic-Map/benthic.geojson') %>%
+  filter(class=="Coral/Algae")
+kimbe_reef_area <- sum(st_area(kimbe_reef))
+units(kimbe_reef_area) <- "km^2" # and convert to km^2
+
+# Get bathymetry from marmap
+kimbe_bathy <- raster("seascapes/Field data/Kimbe_large-20260114171835/Bathymetry---composite-depth/bathymetry_0.tif") # RasterLayer
+kimbe_bathy <- aggregate(kimbe_bathy,fact=20) # decrease resolution of bathymetry file
+kimbe_bathy <- marmap::as.bathy(kimbe_bathy)
+
+transmat_20x <- trans.mat(-kimbe_bathy) # depths are positive, so need to take the negative of the bathymetry object (or change the range of values with arguments to trans.mat)
+
+reef_sf <- kimbe_reef
+bathy_raster <- kimbe_bathy
+marmap_transmat <- transmat_20x
+
+save(reef_sf,bathy_raster,marmap_transmat,file="seascapes/kimbe_large_20x.RData")

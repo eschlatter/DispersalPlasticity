@@ -745,11 +745,11 @@ f_PlotOutput_Lite_Points <- function(output_lite){
   if(!exists("map_sf")) map_sf=NULL
   g_map <- ggplot()+
     geom_sf(data=map_sf)+
-    geom_sf(data=circs,fill=NA,color=alpha("gray",0.2))+
-    geom_sf(data=patch_sf,size=0.2)+
+    geom_sf(data=circs,fill=NA,color=alpha("gray",0.8))+
+    geom_point(data=patch_locations,aes(x=x,y=y,fill=b_i,color=b_i),pch=19)+
     annotation_scale()+
     theme_minimal()+
-    labs(title="Sites, with navigation radius")
+    labs(title="Sites, with navigation radius",fill="b",color="b")
   
   ## plot abundance
   abund_dat <- output_lite$output_list$df_abund[2:nsteps,] # remove the first row, because we didn't calculate stats for it
@@ -783,7 +783,7 @@ f_PlotOutput_Lite_Points <- function(output_lite){
     geom_line(data=eff_dat,aes(y=kernmean_mean,color="Effective"))+
     geom_ribbon(data=eff_dat,aes(ymin=eff_mean_lower,ymax=eff_mean_upper,fill="Effective"),alpha=0.15)+
     theme_minimal()+
-    labs(title="Fundamental and effective kernel means",x='time',y='kernel mean (mean +/- sd at each timestep)')
+    labs(title="Fundamental and effective kernel means",x='time',y='kernel mean in km \n(mean +/- sd at each timestep)')
   
   ### Arrange all plots
   grid.arrange(g_map,g_abund,g_p,g_kernmeans,nrow=2)

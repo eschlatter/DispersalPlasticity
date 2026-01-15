@@ -136,7 +136,16 @@ units(kimbe_reef_area) <- "km^2" # and convert to km^2
 
 # Get bathymetry from marmap
 kimbe_bathy <- raster("seascapes/Field data/Kimbe_large-20260114171835/Bathymetry---composite-depth/bathymetry_0.tif") # RasterLayer
+kimbe_bathy <- aggregate(kimbe_bathy,fact=20) # decrease resolution of bathymetry file
 kimbe_bathy <- marmap::as.bathy(kimbe_bathy)
+
+transmat_20x <- trans.mat(-kimbe_bathy) # depths are positive, so need to take the negative of the bathymetry object (or change the range of values with arguments to trans.mat)
+
+reef_sf <- kimbe_reef
+bathy_raster <- kimbe_bathy
+marmap_transmat <- transmat_20x
+
+save(reef_sf,bathy_raster,marmap_transmat,file="seascapes/kimbe_small_1x.RData")
 
 # Place anemones randomly on reef
 anemone_spots <- st_sample(kimbe_reef,5)
@@ -144,20 +153,26 @@ anemone_spots_df <- sfc_to_df(anemone_spots)%>%
   mutate(depth=marmap::get.depth(kimbe_bathy,x,y,locator=FALSE)$depth) %>%
   filter(depth>0)
 
-g <- ggplot(anemone_spots)+
-  #geom_contour_filled(data=marmap::as.xyz(kimbe_bathy),aes(x=V1,y=V2,z=V3),alpha=0.5)+
+ggplot(anemone_spots)+
+  geom_contour_filled(data=marmap::as.xyz(kimbe_bathy),aes(x=V1,y=V2,z=V3),alpha=0.5)+
   geom_sf(data=kimbe_reef,fill='black',color='black',alpha=0.2)+  
   geom_sf(color='red',size=1)+
   annotation_scale()+
   theme_minimal()
 
 # distances among anemones
-trans1 <- trans.mat(-kimbe_bathy) # depths are positive, so need to take the negative of the bathymetry object (or change the range of values with arguments to trans.mat)
-save(trans1,file="kimbe_trans_mat.RData")
-sponge_paths <- lc.dist(trans1,anemone_spots_df[,c("x","y")],res='path')
+transmat_20x <- trans.mat(-kimbe_bathy) # depths are positive, so need to take the negative of the bathymetry object (or change the range of values with arguments to trans.mat)
+#save(transmat_20x,file="kimbe_large_transmat_20x.RData")
+#load("kimbe_trans_mat.RData")
+anemone_dists <- lc.dist(transmat_20x,anemone_spots_df[,c("x","y")],res='dist',meters=TRUE) #distances are in meters
+anemone_dists_mat <- matrix(0,nrow(anemone_spots_df),nrow(anemone_spots_df)) # convert into matrix form
+anemone_dists_mat[lower.tri(anemone_dists_mat,diag=FALSE)] <- anemone_dists
+anemone_dists_mat <- anemone_dists_mat/1000 # in km. Convert after the fact, because if lc.dist works in km it rounds to the nearest km.
+anemone_dists_mat[upper.tri(anemone_dists_mat,diag=FALSE)] <- t(anemone_dists_mat)[upper.tri(t(anemone_dists_mat),diag=FALSE)] # convert from lower tri to full
 
 # Get one trajectory for plotting
-a <- as.data.frame(sponge_paths[[3]])
+anemone_paths <- lc.dist(transmat_20x,anemone_spots_df[1:min(nrow(anemone_spots_df),5),c("x","y")],res='path')
+a <- as.data.frame(anemone_paths[[1]])
 b <- sf_linestring(a,x="x",y="y")
 st_crs(b) <- st_crs(anemone_spots)
 
@@ -165,6 +180,7 @@ ggplot(anemone_spots)+
   geom_contour_filled(data=marmap::as.xyz(kimbe_bathy),aes(x=V1,y=V2,z=V3),alpha=0.5)+
   geom_sf(data=kimbe_reef,fill='black',color='black',alpha=0.2)+  
   geom_sf(color='red',size=1)+
+  geom_text_repel(data=anemone_spots_df,aes(x=x,y=y,label=point_id),size=3,color='red')+
   annotation_scale()+
   theme_minimal()+
   geom_sf(data=b,color="yellow")

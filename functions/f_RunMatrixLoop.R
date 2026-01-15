@@ -1,7 +1,7 @@
 ####################### version that stores all timesteps #######################
 f_RunMatrixLoop <- function(params){
   starttime <- proc.time()
-  numCores <- detectCores()
+  numCores <- parallelly::availableCores()
   
   list2env(x=params,envir=environment())
   
@@ -140,8 +140,12 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
   if(is.null(makehab_output)) makehab_output <- f_MakeHabitat(nx=nx,ny=ny,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
                                                               hab_type=hab_type,nav_rad=nav_rad,numCores=numCores)
   list2env(x=makehab_output,envir=environment())
-  K <- patch_locations$K_i # keep a record of what these are at the beginning
-  b <- patch_locations$b_i # keep a record of what these are at the beginning
+
+  # set patch-specific characteristics
+  if(hab_type=="points") patch_locations$K_i <- 1
+  K <- patch_locations$K_i # K records the initial values; the values in patch_locations$K_i could change with disturbance
+  b <- patch_locations$b_i # b records the initial values; the values in patch_locations$b_i could change with disturbance
+  # put habitat info into params so it's accessible in the simulation output
   params$patch_locations <- patch_locations
   params$patch_sf <- patch_sf
   
@@ -303,8 +307,9 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       if(show_plot==TRUE){
         if(hab_type=="points"){
           g_map_abund <- ggplot(patch_sf)+
-            geom_sf(aes(color=rowSums(new_pop)))+
+            geom_sf(aes(color=factor(rowSums(new_pop))))+
             labs(color="Abundance",title=paste0("t=",t))+
+            scale_color_manual(values=c("blue","red"),breaks=c(1,0))+
             theme_minimal()+
             annotation_scale()
           print(g_map_abund)

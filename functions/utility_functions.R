@@ -111,6 +111,84 @@ f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,
   return(list(patch_locations=patch_locations,K=K,nx=nx,ny=ny))
 }
 
+f_PlotDecayFn <- function(phi){
+  plot(1:100,exp(-phi^2*1:100),type='l',main=paste0('phi=',phi))
+}
+
+library(spdep)
+# generates spatially-autocorrelated b_i values
+# takes a set of points (patch_locations) and the associated distance matrix (dists_mat)
+# returns patch_locations, with a column added for b_i
+f_SimBValues <- function(patch_locations,dists_mat,phi,show_plot=FALSE,noise=0){
+  sp_aut_dist=NA
+  # simulate b values
+  cov_Sigma <- exp(-phi*dists_mat) # let covariance decay exponentially with distance
+  # check in case covariance matrix isn't positive definite (maybe because phi is too small)
+  if(min(eigen(cov_Sigma)$values)<(-1e-14)){
+    print("Warning: covariance matrix is not positive definite. No b_i values simulated.")
+    return(list(patch_locations=patch_locations,sp_aut_dist=sp_aut_dist))
+  }
+  patch_locations$b_i <- mvrnorm(n=1, mu=rep(5,times=nrow(patch_locations)), Sigma=cov_Sigma+noise*diag(nrow(patch_locations)))
+  
+  # optionally, plot
+  if(show_plot==TRUE){
+    g <- ggplot(patch_locations, aes(x=x,y=y,color=b_i))+
+      geom_point()+
+      labs(title=paste0('phi=',phi))+
+      theme_minimal()
+    print(g)
+  }
+  
+  # calculate incremental spatial autocorrelation (like Robin's paper)
+  dists_mat_NA <- dists_mat
+  diag(dists_mat_NA) <- NA
+  nearest_dists <- do.call(pmin,c(as.data.frame(dists_mat_NA),na.rm=TRUE))
+#  min_band <- min(nearest_dists) # minimum distance so everybody has at least one neighbor
+  min_band <- median(nearest_dists)
+  band_incr <- mean(nearest_dists) # average distance to each feature's nearest neighboring feature
+  farthest_dists <- do.call(pmax,c(as.data.frame(dists_mat_NA),na.rm=TRUE)) 
+  max_band <- min(farthest_dists) # max dist so everybody still has at least one neighbor
+  
+  incr_moran <- data.frame(band=seq(from=min_band,by=band_incr,to=max_band),z=NA, MI=NA, p=NA)
+
+  for(i in 1:nrow(incr_moran)){
+    dist_band <- incr_moran$band[i]
+    
+    # set to 1 for all points within the range (dist_band,dist_band+band_incr), and 0 for all points outside
+    s.dist <- dists_mat
+    s.dist[dists_mat<dist_band] <- 1
+    s.dist[dists_mat>dist_band] <- 0
+    # s.dist[s.dist>(dist_band+band_incr)] <- 0
+    # s.dist[s.dist>0] <- 1
+    
+    # spatial weights matrix (normalized version of s.dist)
+    w.dist <- s.dist/colSums(s.dist)
+    nonzero_neigh <- which(colSums(w.dist,na.rm=TRUE)!=0)
+    w.dist <- w.dist[nonzero_neigh,][,nonzero_neigh] # get rid of sites without neighbors in this band (is this ok?)
+    
+    # store it
+    if(length(nonzero_neigh)>0){
+      MC <- Moran.I(x=patch_locations$b_i[nonzero_neigh],weight=w.dist)
+      z <- (MC$observed-MC$expected)/MC$sd # calculate the z-score
+      incr_moran$z[i] <- z
+      incr_moran$MI[i] <- MC$observed
+      incr_moran$p[i] <- 2*pnorm(abs(z),lower.tail = FALSE)
+    } else incr_moran$MC[i] <- NA
+  }  
+  
+  h <- ggplot(incr_moran,aes(x=band,y=MI))+
+    geom_line(alpha=0.3)+
+    geom_point(aes(color=(p<0.05)),size=0.5)+
+    scale_color_manual(values=c("black","grey"),breaks=c(TRUE, FALSE))+
+    labs(x="distance band (km)",y="Moran's I",title=paste0("Incremental Spatial Autocorrelation, phi=",phi))+
+    geom_hline(yintercept=0,alpha=0.3,lty="dashed")+
+    theme_minimal()
+  print(h)
+  sp_aut_dist <- incr_moran$band[which.max(incr_moran$z)]
+  
+  return(list(patch_locations=patch_locations,sp_aut_dist=sp_aut_dist,incr_moran=incr_moran))
+}
+
 # takes existing map (patch_locations)
 # or generates uniform grid (if patch_locations==NULL)
 # returns connectivity matrices and related objects for use in simulation
@@ -121,7 +199,7 @@ f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,
 #   2) if hab_type=="grid", a dataframe with columns id, x, y
 #   3) if hab_type=="points", a shapefile
 # if not given a distance matrix, it'll calculate as the crow flies. If you want in-water distance, do it beforehand and pass the distance matrix.
-f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE,hab_type="grid",nav_rad=1,dists_mat=NULL){
+f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE,hab_type="grid",nav_rad=1,dists_mat=NULL,overlap_method=1){
   numCores <- parallelly::availableCores()
   
   # list of patch locations and IDs
@@ -161,11 +239,10 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
   
   if(hab_type=="points"){
     # convert formats so patch_locations is a dataframe, and patch_sf is a shapefile
-    # if patch_locations is not a shapefile
-    if(inherits(patch_locations,"sf")==FALSE){
-      # first, create a shapefile of points from patch_locations
+    if(inherits(patch_locations,"sf")==FALSE){     # if patch_locations is not a shapefile
+      # create a shapefile of points from patch_locations
       patch_sf <- st_as_sf(patch_locations,coords=c("x","y"))
-      st_crs(patch_sf) <- 4326 # change this if we need to
+      st_crs(patch_sf) <- 4326
     } else { # if patch_locations is a shapefile
       patch_sf <- patch_locations
       patch_locations <- cbind(st_drop_geometry(patch_sf),st_coordinates(patch_sf))
@@ -180,15 +257,25 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
       patch_dists <- dists_mat
     }
     
-    # if patches aren't on a grid,
-    # find the overlap of each patch's basin of attraction with other basins
-    # first define the basins
-    circs=st_buffer(patch_sf,dist=set_units(nav_rad,km)) # nav_rad is specified in km
-    onecirc_area=st_area(circs[1,])
-    # then calculate the overlaps (this is slow; should use mclapply)
-    all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = numCores)
-    all_overlaps <- unlist(all_overlaps)
-    overlap_discount <- 1/(1+all_overlaps)
+    # ## OVERLAP METHOD 1:
+    if(overlap_method==1){
+      # if patches aren't on a grid,
+      # find the overlap of each patch's basin of attraction with other basins
+      # first define the basins
+      circs=st_buffer(patch_sf,dist=set_units(nav_rad,km)) # nav_rad is specified in km
+      onecirc_area=st_area(circs[1,])
+      # then calculate the overlaps (this is slow; should use mclapply)
+      all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = numCores)
+      all_overlaps <- unlist(all_overlaps)
+      overlap_discount <- 1/(1+all_overlaps)
+    }
+    
+    ## OVERLAP METHOD 2:
+    if(overlap_method==2){
+      n_neighbors <- rowSums(patch_dists<nav_rad) # number of points within distance nav_rad of focal point (including focal point)
+      overlap_discount <- 1/n_neighbors
+    }
+    
     
     # set objects that are mainly used in grid mode
     patch_map=NULL
@@ -234,6 +321,27 @@ f_SimPtsOnMap <- function(map_extent="large",n_anems=50,show_map=TRUE){
   dists_mat <- dists_mat/1000 # in km. Convert after the fact, because if lc.dist works in km it rounds to the nearest km.
   dists_mat[upper.tri(dists_mat,diag=FALSE)] <- t(dists_mat)[upper.tri(t(dists_mat),diag=FALSE)] # convert from lower tri to full
   
+  # check for infinite distances
+  inf_dists <- which(dists_mat[,1]==Inf)
+  if(length(inf_dists)>0){
+    print(paste0("Removed ",length(inf_dists)," points at distance infinity"))
+    patch_locations <- patch_locations[-inf_dists,]
+    dists_mat <- dists_mat[-inf_dists,][,-inf_dists]
+  }
+  
+  # check for points too close together
+  v_remove=c()
+  for(pt_i in 1:nrow(patch_locations)){
+    too_close <- which(dists_mat[-pt_i,pt_i]<0.001) # points less than 1m away
+    if(length(too_close)>0) {v_remove <- c(v_remove,too_close)}
+  }
+  if(length(v_remove)>0){
+    patch_locations <- patch_locations[-v_remove,]
+    dists_mat <- dists_mat[-v_remove,][,-v_remove]
+    print(paste0("Points too close: ",length(v_remove)," removed"))
+  } 
+  
+  # optionally, plot
   if(show_map==TRUE){
     g <- ggplot(anemone_spots)+
       geom_contour_filled(data=marmap::as.xyz(bathy_raster),aes(x=V1,y=V2,z=V3),alpha=0.5)+

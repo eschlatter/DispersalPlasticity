@@ -392,7 +392,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
 f_Competition <- function(i_patch,patch_abunds,patch_locations,temp_pop,ngroups){
   if(patch_abunds[i_patch]>0){ # if the patch isn't empty
     survivors=t(rmultinom(n=1,
-                          size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose groups for min(abundance, K) survivors
+                          size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose groups for min(abundance, K) survivors (rounds down)
                           prob = temp_pop[i_patch,])) # probability of each group being chosen depends on its current abundance
   }
   else survivors <- vector(mode='integer',length=ngroups)

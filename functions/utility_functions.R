@@ -1,4 +1,193 @@
 library(gridExtra)
+source('0_Setup.R')
+
+# generate a simulated basemap
+# inputs:
+#   x_dist,y_dist: size of map in the x and y directions (in meters)
+#   resol: vector of resolution (in degrees) in the x and y directions
+#   h: habitat aggregation value (between -2 and 2; higher = more autocorrelated)
+#   p: proportion of the map that should be habitat
+# output:
+#   reef_sf: sfc_multipolygon of the reef area
+#   bathy_raster: marmap::bathy object
+f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),h=0.7,prop_hab=0.3){
+  # create empty raster
+  endpt_lat <- as.numeric(geosphere::destPoint(c(0,0),b=0,d=y_dist)[,'lat'])
+  endpt_lon <- as.numeric(geosphere::destPoint(c(0,0),b=90,d=x_dist)[,'lon'])
+  base_rast <- raster(xmn=0,xmx=endpt_lon,ymn=0,ymx=endpt_lat,res=c(0.00005,0.00005))
+  
+  # add in fractal landscape reef
+  dimens <- (2^(1:15)+1)
+  nx=base_rast@ncols
+  ny=base_rast@nrows
+  k <- first(which(dimens>=max(nx,ny)))
+  base_map=fracland(k=k,h=h,p=1-prop_hab,binary=TRUE,plotflag=FALSE)
+  base_rast[] <- base_map[1:ny,1:nx]
+  
+  # create bathy_raster (for getting in-water distances)
+  bathy_rast <- marmap::as.bathy(base_rast) # this rotates it! Why???
+  bathy_rast[bathy_rast==1] <- -20 # reef
+  bathy_rast[bathy_rast==0] <- -100 # open water
+  # bathy_rast[bathy_rast==-1] <- 100 # land 
+
+  # create reef_sf (for simulating point locations and plotting)
+  basemap_stars <- st_as_stars(base_rast)
+  basemap_contour <- st_contour(basemap_stars,breaks=c(0.5))
+  reef_sf <- basemap_contour[basemap_contour$Min>0,] # pick out just the reef part for the shapefile
+    
+  # create base_matrix (for creating the main simulation's data structure)
+  # and base_matrix_coords: translates between matrix indices and lat/lon values
+  base_matrix <- as.matrix(base_rast,nrow=ny)
+  base_matrix_coords <- st_coordinates(basemap_stars) %>% rename(lon=x,lat=y)
+  coord_inds <- expand.grid(x=1:nx,y=1:ny)
+  base_matrix_coords <- cbind(base_matrix_coords,coord_inds)
+  
+  
+  return(list(base_matrix=base_matrix,base_matrix_coords=base_matrix_coords,bathy_rast=bathy_rast,reef_sf=reef_sf))
+}
+
+hab_sim <- f_GenerateBasemap(x_dist=500,y_dist=200,prop_hab=0.4)
+autoplot.bathy(hab_sim$bathy_rast,geom=c("raster"))
+
+#anemone_spots <- st_sample(hab_sim$reef_sf,100)
+ggplot()+geom_sf(data=hab_sim$reef_sf)#+geom_sf(data=anemone_spots)
+  
+# just to check that the output works:  
+  # anemone_spots <- st_sample(reef_sf,10)
+  # ggplot()+geom_sf(data=reef_sf)+geom_sf(data=anemone_spots)
+  # autoplot.bathy(bathy_rast,geom=c("contour","raster"))
+  # 
+  # 
+  # transmat <- trans.mat(basemap_bathy)
+  # 
+  # patch_locations <- base_locations
+  # dists <- lc.dist(transmat,patch_locations[,c("lon","lat")],res='dist',meters=TRUE) #distances are in meters
+  # dists_mat <- matrix(0,nrow(patch_locations),nrow(patch_locations)) # convert into matrix form
+  # dists_mat[lower.tri(dists_mat,diag=FALSE)] <- dists
+  # dists_mat <- dists_mat/1000 # in km. Convert after the fact, because if lc.dist works in km it rounds to the nearest km.
+  # dists_mat[upper.tri(dists_mat,diag=FALSE)] <- t(dists_mat)[upper.tri(t(dists_mat),diag=FALSE)] # convert from lower tri to full
+
+base_matrix <- hab_sim$base_matrix
+base_matrix_coords <- hab_sim$base_matrix_coords
+q_range=c(2,11)
+q_autocorr=0.7
+reef_vals=c(1,10000)
+
+# Generate habitat quality map
+# Inputs:
+#   base_map: nx-by-ny matrix of reef habitat and open water (output of f_GenerateBasemap)
+#   q_range: c(qmin,qmax), where q=habitat quality
+#   q_autocorr: some measure of the spatial autocorrelation in q.
+#               For the fractal landscape method, it's h in the fracland function (higher values = more autocorrelated, range=(-2,2)(technically (-infinity,2) but don't worry about it))
+#   reef_vals: bounds (lower and upper) on the values in base_map that are considered habitable reef
+f_GenerateHabQual <- function(base_matrix,base_matrix_coords,q_range,q_autocorr,reef_vals=c(1,1),plot_flag=FALSE){
+  # add habitat values on top of base map
+  nx=ncol(base_matrix)
+  ny=nrow(base_matrix)
+  # find the k value to use in fracland function, given the dimensions of the base map
+  dimens <- (2^(1:15)+1)
+  k <- first(which(dimens>=max(nx,ny)))
+  # generate a fractal layer
+  frac_map <- fracland(k=k,h=q_autocorr,binary=FALSE,plotflag=FALSE)
+  # convert to desired range of K values
+  frac_map <- (frac_map-min(frac_map))/(max(frac_map)-min(frac_map)) # first to 0-1
+  frac_map <- frac_map*(q_range[2]-q_range[1])+q_range[1]
+
+  # create full map
+  full_map <- base_matrix
+  reef_sites <- which((base_matrix>=reef_vals[1] & base_matrix<=reef_vals[2]),arr.ind=TRUE)
+  reef_sites_ind <- which((base_matrix>=reef_vals[1] & base_matrix<=reef_vals[2]))
+  not_reef <- which(!(base_matrix>=reef_vals[1] & base_matrix<=reef_vals[2])|is.na(base_matrix),arr.ind=TRUE)
+  full_map[reef_sites] <- frac_map[reef_sites]
+  full_map[not_reef] <- 0
+  
+  # put things in the right format for simulation inputs
+  reef_locations <- as.data.frame(reef_sites) %>%
+    rename(y=row,x=col) %>%
+    rowid_to_column(var='id')
+  reef_locations$q <- full_map[reef_sites]
+  
+  reef_locations <- left_join(reef_locations,base_matrix_coords,by=c("x","y"))
+  
+  if(plot_flag==TRUE){
+    g <- ggplot(reef_locations,aes(x=lon,y=lat,fill=q))+geom_tile()
+    print(g)
+  }
+  
+  return(reef_locations)
+}
+
+reef_locations <- f_GenerateHabQual(base_matrix,base_matrix_coords,q_range,q_autocorr,reef_vals,plot_flag=TRUE)
+
+crs=crs(kimbe_bathy1)
+
+# Given a map extent, generates the specified number of anemones at random locations on the map
+# map_extent = "small" for the study area or "large" for all of Kimbe Bay
+# n_anems = number of anemone locations to simulate
+f_SimPtsOnMap <- function(reef_sf,base_matrix,reef_locations,crs,n_anems=50,show_map=TRUE){
+
+  # prep data: raster with x (lon), y (lat), z (habitat quality)
+  reef_rast <- terra::rast(rasterFromXYZ(data.frame(x=reef_locations$lon,y=reef_locations$lat,z=reef_locations$q),crs=crs))
+  
+  # sample the anemones
+  anemone_spots <- st_sample(reef_sf,n_anems)
+  # get their habitat quality values
+  patch_locations <- terra::extract(reef_rast,vect(anemone_spots),xy=TRUE,search_radius=500) %>%
+    rename(q=z)
+  
+  anemone_spots$q <- NULL
+  
+  ggplot()+geom_raster(reef_rast)
+  
+  +geom_sf(data=anemone_spots,aes(color=patch_locations$q))
+  # patch_locations <- sfc_to_df(anemone_spots)[,c('x','y')]  %>%
+  #   mutate(depth=marmap::get.depth(bathy_raster,x,y,locator=FALSE)$depth) %>%
+  #   filter(depth>0) %>%
+  #   dplyr::select(id=point_id,x,y)
+  # 
+  # # in-water distance
+  # dists <- lc.dist(marmap_transmat,patch_locations[,c("x","y")],res='dist',meters=TRUE) #distances are in meters
+  # dists_mat <- matrix(0,nrow(patch_locations),nrow(patch_locations)) # convert into matrix form
+  # dists_mat[lower.tri(dists_mat,diag=FALSE)] <- dists
+  # dists_mat <- dists_mat/1000 # in km. Convert after the fact, because if lc.dist works in km it rounds to the nearest km.
+  # dists_mat[upper.tri(dists_mat,diag=FALSE)] <- t(dists_mat)[upper.tri(t(dists_mat),diag=FALSE)] # convert from lower tri to full
+  
+  # check for infinite distances
+  inf_dists <- which(dists_mat[,1]==Inf)
+  if(length(inf_dists)>0){
+    print(paste0("Removed ",length(inf_dists)," points at distance infinity"))
+    patch_locations <- patch_locations[-inf_dists,]
+    dists_mat <- dists_mat[-inf_dists,][,-inf_dists]
+  }
+  
+  # check for points too close together
+  v_remove=c()
+  for(pt_i in 1:nrow(patch_locations)){
+    too_close <- which(dists_mat[-pt_i,pt_i]<0.001) # points less than 1m away
+    if(length(too_close)>0) {v_remove <- c(v_remove,too_close)}
+  }
+  if(length(v_remove)>0){
+    patch_locations <- patch_locations[-v_remove,]
+    dists_mat <- dists_mat[-v_remove,][,-v_remove]
+    print(paste0("Points too close: ",length(v_remove)," removed"))
+  } 
+  
+  # optionally, plot
+  if(show_map==TRUE){
+    g <- ggplot(anemone_spots)+
+      geom_contour_filled(data=marmap::as.xyz(bathy_raster),aes(x=V1,y=V2,z=V3),alpha=0.5)+
+      geom_sf(data=reef_sf,fill='black',color='black',alpha=0.2)+  
+      geom_sf(color='red',size=1)+
+      annotation_scale()+
+      theme_minimal()
+    print(g)
+  }
+  
+  return(list(patch_locations=patch_locations,dists_mat=dists_mat))
+}
+
+
+
 
 # ## plasticity function: plasticity in dispersal kernel in response to K (carrying capacity) of patch
 # # b, p, alpha, theta: current set of parameter values
@@ -296,64 +485,6 @@ f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=
 }
 
 
-# Given a map extent, generates the specified number of anemones at random locations on the map
-# map_extent = "small" for the study area or "large" for all of Kimbe Bay
-# n_anems = number of anemone locations to simulate
-f_SimPtsOnMap <- function(map_extent="large",n_anems=50,show_map=TRUE){
-  # load map data. Should contain:
-  # reef_sf,bathy_raster,marmap_transmat
-  if(map_extent=="large"){
-    load("seascapes/kimbe_large_20x.RData") # load the reef and bathymetry maps
-  }
-  if(map_extent=="small"){
-    load("seascapes/kimbe_small_1x.RData")
-  }
-  
-  anemone_spots <- st_sample(reef_sf,n_anems)
-  patch_locations <- sfc_to_df(anemone_spots)%>%
-    mutate(depth=marmap::get.depth(bathy_raster,x,y,locator=FALSE)$depth) %>%
-    filter(depth>0) %>%
-    dplyr::select(id=point_id,x,y)
-  
-  dists <- lc.dist(marmap_transmat,patch_locations[,c("x","y")],res='dist',meters=TRUE) #distances are in meters
-  dists_mat <- matrix(0,nrow(patch_locations),nrow(patch_locations)) # convert into matrix form
-  dists_mat[lower.tri(dists_mat,diag=FALSE)] <- dists
-  dists_mat <- dists_mat/1000 # in km. Convert after the fact, because if lc.dist works in km it rounds to the nearest km.
-  dists_mat[upper.tri(dists_mat,diag=FALSE)] <- t(dists_mat)[upper.tri(t(dists_mat),diag=FALSE)] # convert from lower tri to full
-  
-  # check for infinite distances
-  inf_dists <- which(dists_mat[,1]==Inf)
-  if(length(inf_dists)>0){
-    print(paste0("Removed ",length(inf_dists)," points at distance infinity"))
-    patch_locations <- patch_locations[-inf_dists,]
-    dists_mat <- dists_mat[-inf_dists,][,-inf_dists]
-  }
-  
-  # check for points too close together
-  v_remove=c()
-  for(pt_i in 1:nrow(patch_locations)){
-    too_close <- which(dists_mat[-pt_i,pt_i]<0.001) # points less than 1m away
-    if(length(too_close)>0) {v_remove <- c(v_remove,too_close)}
-  }
-  if(length(v_remove)>0){
-    patch_locations <- patch_locations[-v_remove,]
-    dists_mat <- dists_mat[-v_remove,][,-v_remove]
-    print(paste0("Points too close: ",length(v_remove)," removed"))
-  } 
-  
-  # optionally, plot
-  if(show_map==TRUE){
-    g <- ggplot(anemone_spots)+
-      geom_contour_filled(data=marmap::as.xyz(bathy_raster),aes(x=V1,y=V2,z=V3),alpha=0.5)+
-      geom_sf(data=reef_sf,fill='black',color='black',alpha=0.2)+  
-      geom_sf(color='red',size=1)+
-      annotation_scale()+
-      theme_minimal()
-    print(g)
-  }
-  
-  return(list(patch_locations=patch_locations,dists_mat=dists_mat))
-}
 
 
 # inputs: kernel, seascape

@@ -1,191 +1,386 @@
 library(gridExtra)
-source('0_Setup.R')
 
 # generate a simulated basemap
 # inputs:
 #   x_dist,y_dist: size of map in the x and y directions (in meters)
 #   resol: vector of resolution (in degrees) in the x and y directions
+#   method: "fractal" (fractal landscape); "uniform" (all sites habitable)
 #   h: habitat aggregation value (between -2 and 2; higher = more autocorrelated)
-#   p: proportion of the map that should be habitat
+#   prop_hab: proportion of the map that should be habitat
 # output:
 #   reef_sf: sfc_multipolygon of the reef area
-#   bathy_raster: marmap::bathy object
-f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),h=0.7,prop_hab=0.3){
+#   bathy_rast: marmap::bathy object, for getting in-water distances
+#   base_rast: SpatRaster with 0 for open water, 1 for reef
+f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),method="fractal",h=NA,prop_hab=NA,make_dist_mat=TRUE){
   # create empty raster
   endpt_lat <- as.numeric(geosphere::destPoint(c(0,0),b=0,d=y_dist)[,'lat'])
   endpt_lon <- as.numeric(geosphere::destPoint(c(0,0),b=90,d=x_dist)[,'lon'])
-  base_rast <- raster(xmn=0,xmx=endpt_lon,ymn=0,ymx=endpt_lat,res=c(0.00005,0.00005))
+  base_rast <- rast(xmin=0,xmax=endpt_lon,ymin=0,ymax=endpt_lat,resolution=c(0.00005,0.00005))
+  crs(base_rast) <- "epsg:4326"
+  nx=ncol(base_rast)
+  ny=nrow(base_rast)
   
-  # add in fractal landscape reef
-  dimens <- (2^(1:15)+1)
-  nx=base_rast@ncols
-  ny=base_rast@nrows
-  k <- first(which(dimens>=max(nx,ny)))
-  base_map=fracland(k=k,h=h,p=1-prop_hab,binary=TRUE,plotflag=FALSE)
-  base_rast[] <- base_map[1:ny,1:nx]
+  # generate habitat configuration and add it to base_rast
+  if(method=="fractal"){
+    #fractal landscape
+    dimens <- (2^(1:15)+1)
+    k <- first(which(dimens>=max(nx,ny)))
+    base_map=fracland(k=k,h=h,p=1-prop_hab,binary=TRUE,plotflag=FALSE)
+    base_map <- base_map[1:ny,1:nx]
+  } else if(method=="uniform"){
+    # full grid is habitable
+    base_map <- matrix(1,nrow=ny,ncol=nx)
+  } else stop("method incorrectly specified")
+  values(base_rast) <- base_map   # add habitat configuration to raster
   
   # create bathy_raster (for getting in-water distances)
-  bathy_rast <- marmap::as.bathy(base_rast) # this rotates it! Why???
+  bathy_rast <- marmap::as.bathy(raster(base_rast)) # this rotates it! Why???
   bathy_rast[bathy_rast==1] <- -20 # reef
   bathy_rast[bathy_rast==0] <- -100 # open water
   # bathy_rast[bathy_rast==-1] <- 100 # land 
-
+  ## autoplot.bathy(bathy_rast,geom="raster")
+  
   # create reef_sf (for simulating point locations and plotting)
-  basemap_stars <- st_as_stars(base_rast)
-  basemap_contour <- st_contour(basemap_stars,breaks=c(0.5))
-  reef_sf <- basemap_contour[basemap_contour$Min>0,] # pick out just the reef part for the shapefile
+  if(method=="uniform"){
+    # generate reef_sf manually
+    reef_sf <- st_multipolygon(x = list(list(rbind(c(0,0),c(endpt_lon,0),c(endpt_lon,endpt_lat),c(0,endpt_lat),c(0,0)))))
+  } else{
+    basemap_stars <- st_as_stars(base_rast[[1]])
+    basemap_contour <- st_contour(basemap_stars,breaks=c(0.5))
+    reef_sf <- basemap_contour[basemap_contour$Min>0,] # pick out just the reef part for the shapefile
+  }
+  
+  # create distance matrix
+  if(make_dist_mat==TRUE){
+    # take base_rast and make an sf object with a point in the center of each reef cell
+    yn_reef <- values(base_rast,dataframe=TRUE) # reef/water values
+    coords <- crds(base_rast,df=TRUE) # coordinates
+    patches <- cbind(coords,yn_reef) # put them together 
+    patches <- subset(patches,lyr.1!=0) # remove open water patches
+    st_patches <- st_multipoint(x=as.matrix(patches[,c('x','y')]))
+    sfc_patches <- st_sfc(st_patches,crs=crs(base_rast))
+    sfc_patches <- st_cast(sfc_patches,'POINT')
     
-  # create base_matrix (for creating the main simulation's data structure)
-  # and base_matrix_coords: translates between matrix indices and lat/lon values
-  base_matrix <- as.matrix(base_rast,nrow=ny)
-  base_matrix_coords <- st_coordinates(basemap_stars) %>% rename(lon=x,lat=y)
-  coord_inds <- expand.grid(x=1:nx,y=1:ny)
-  base_matrix_coords <- cbind(base_matrix_coords,coord_inds)
+    # # also make a dataframe, so we can connect distances/angles to patches
+    # df_patches <- data.frame(st_coordinates(sfc_patches))
+    # npatch <- nrow(df_patches)
+    # df_patches$id <- 1:npatch
+    
+    # make patch_dists
+    patch_dists <- st_distance(sfc_patches)
+    units(patch_dists) <- 'km'
+  } else {
+    patch_dists=NA
+    sfc_patches=NA
+  }
   
-  
-  return(list(base_matrix=base_matrix,base_matrix_coords=base_matrix_coords,bathy_rast=bathy_rast,reef_sf=reef_sf))
+  return(list(base_rast=base_rast,bathy_rast=bathy_rast,reef_sf=reef_sf,
+              patch_dists=patch_dists,sfc_patches=sfc_patches))
 }
-
-hab_sim <- f_GenerateBasemap(x_dist=500,y_dist=200,prop_hab=0.4)
-autoplot.bathy(hab_sim$bathy_rast,geom=c("raster"))
-
-#anemone_spots <- st_sample(hab_sim$reef_sf,100)
-ggplot()+geom_sf(data=hab_sim$reef_sf)#+geom_sf(data=anemone_spots)
-  
-# just to check that the output works:  
-  # anemone_spots <- st_sample(reef_sf,10)
-  # ggplot()+geom_sf(data=reef_sf)+geom_sf(data=anemone_spots)
-  # autoplot.bathy(bathy_rast,geom=c("contour","raster"))
-  # 
-  # 
-  # transmat <- trans.mat(basemap_bathy)
-  # 
-  # patch_locations <- base_locations
-  # dists <- lc.dist(transmat,patch_locations[,c("lon","lat")],res='dist',meters=TRUE) #distances are in meters
-  # dists_mat <- matrix(0,nrow(patch_locations),nrow(patch_locations)) # convert into matrix form
-  # dists_mat[lower.tri(dists_mat,diag=FALSE)] <- dists
-  # dists_mat <- dists_mat/1000 # in km. Convert after the fact, because if lc.dist works in km it rounds to the nearest km.
-  # dists_mat[upper.tri(dists_mat,diag=FALSE)] <- t(dists_mat)[upper.tri(t(dists_mat),diag=FALSE)] # convert from lower tri to full
-
-base_matrix <- hab_sim$base_matrix
-base_matrix_coords <- hab_sim$base_matrix_coords
-q_range=c(2,11)
-q_autocorr=0.7
-reef_vals=c(1,10000)
 
 # Generate habitat quality map
 # Inputs:
-#   base_map: nx-by-ny matrix of reef habitat and open water (output of f_GenerateBasemap)
+#   base_rast: SpatRaster with 0 for open water, 1 for reef
 #   q_range: c(qmin,qmax), where q=habitat quality
 #   q_autocorr: some measure of the spatial autocorrelation in q.
 #               For the fractal landscape method, it's h in the fracland function (higher values = more autocorrelated, range=(-2,2)(technically (-infinity,2) but don't worry about it))
-#   reef_vals: bounds (lower and upper) on the values in base_map that are considered habitable reef
-f_GenerateHabQual <- function(base_matrix,base_matrix_coords,q_range,q_autocorr,reef_vals=c(1,1),plot_flag=FALSE){
+# Outputs:
+#   q_rast: SpatRaster object with two layers: reef (0 for open water and 1 for reef) and q (habitat quality)
+f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,plot_flag=FALSE){
   # add habitat values on top of base map
-  nx=ncol(base_matrix)
-  ny=nrow(base_matrix)
-  # find the k value to use in fracland function, given the dimensions of the base map
-  dimens <- (2^(1:15)+1)
+  nx=ncol(base_rast)
+  ny=nrow(base_rast)
+  dimens <- (2^(1:15)+1)   # find the k value to use in fracland function, given the dimensions of the base map
   k <- first(which(dimens>=max(nx,ny)))
   # generate a fractal layer
   frac_map <- fracland(k=k,h=q_autocorr,binary=FALSE,plotflag=FALSE)
-  # convert to desired range of K values
+  # convert to desired range of q values
   frac_map <- (frac_map-min(frac_map))/(max(frac_map)-min(frac_map)) # first to 0-1
-  frac_map <- frac_map*(q_range[2]-q_range[1])+q_range[1]
+  frac_map <- frac_map*(q_range[2]-q_range[1])+q_range[1] # then to q_range
+  frac_map <- frac_map[1:ny,1:nx] 
+  empty_rast <- rast(ext(base_rast), resolution=res(base_rast), crs = crs(base_rast))
+  values(empty_rast) <- frac_map
+  q_rast <- c(base_rast,empty_rast*base_rast)
+  names(q_rast) <- c("reef","q")
+  
+  # # put things in the right format for simulation inputs
+  # a <- subset(values(hab_rast,dataframe=TRUE),!is.na(reef))
+  # b <- crds(hab_rast,df=TRUE)
+  # reef_locations <- cbind(a,b)
+  # 
+  # if(plot_flag==TRUE){
+  #   g <- ggplot(reef_locations,aes(x=x,y=y,fill=q))+geom_tile()
+  #   print(g)
+  # }
+  
+  return(list(q_rast=q_rast))
+}
 
-  # create full map
-  full_map <- base_matrix
-  reef_sites <- which((base_matrix>=reef_vals[1] & base_matrix<=reef_vals[2]),arr.ind=TRUE)
-  reef_sites_ind <- which((base_matrix>=reef_vals[1] & base_matrix<=reef_vals[2]))
-  not_reef <- which(!(base_matrix>=reef_vals[1] & base_matrix<=reef_vals[2])|is.na(base_matrix),arr.ind=TRUE)
-  full_map[reef_sites] <- frac_map[reef_sites]
-  full_map[not_reef] <- 0
-  
-  # put things in the right format for simulation inputs
-  reef_locations <- as.data.frame(reef_sites) %>%
-    rename(y=row,x=col) %>%
-    rowid_to_column(var='id')
-  reef_locations$q <- full_map[reef_sites]
-  
-  reef_locations <- left_join(reef_locations,base_matrix_coords,by=c("x","y"))
+# Generate carrying capacity map
+# Inputs:
+#   df_patches: data frame with a row for every reef cell, and its x and y values
+#   base_rast: SpatRaster object with one layer: reef (0 for open water and 1 for reef)
+#   K_range: c(Kmin,Kmax)
+#   K_autocorr: some measure of the spatial autocorrelation in K.
+#               For the fractal landscape method, it's h in the fracland function (higher values = more autocorrelated, range=(-2,2))
+# Outputs:
+#   df_patches: df with columns for x, y, and K
+#   hab_rast: SpatRaster object (matching base_rast in extent and resolution) with 1 layer: K (carrying capacity)
+f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE){
+  # add habitat values on top of base map
+  nx=ncol(base_rast)
+  ny=nrow(base_rast)
+  dimens <- (2^(1:15)+1)   # find the k value to use in fracland function, given the dimensions of the base map
+  k <- first(which(dimens>=max(nx,ny)))
+  # generate a fractal layer
+  frac_map <- fracland(k=k,h=K_autocorr,binary=FALSE,plotflag=FALSE)
+  # convert to desired range of q values
+  frac_map <- (frac_map-min(frac_map))/(max(frac_map)-min(frac_map)) # first to 0-1
+  frac_map <- frac_map*(K_range[2]-K_range[1])+K_range[1] # then to q_range
+  frac_map <- frac_map[1:ny,1:nx] 
+  empty_rast <- rast(ext(base_rast), resolution=res(base_rast), crs = crs(base_rast))
+  values(empty_rast) <- frac_map
+  K_rast <- empty_rast*base_rast
+  names(K_rast) <- c("K")
   
   if(plot_flag==TRUE){
-    g <- ggplot(reef_locations,aes(x=lon,y=lat,fill=q))+geom_tile()
-    print(g)
+    plot(K_rast)
   }
   
-  return(reef_locations)
+  return(list(K_rast=K_rast))
 }
 
-reef_locations <- f_GenerateHabQual(base_matrix,base_matrix_coords,q_range,q_autocorr,reef_vals,plot_flag=TRUE)
+# # put habitable sites into a dataframe
+# a <- values(K_rast,dataframe=TRUE) # K values
+# b <- crds(K_rast,df=TRUE) # coordinates
+# df_patches <- cbind(b,a) # put them together
+# df_patches <- subset(df_patches,K!=0) # remove open water patches
 
-crs=crs(kimbe_bathy1)
 
-# Given a map extent, generates the specified number of anemones at random locations on the map
-# map_extent = "small" for the study area or "large" for all of Kimbe Bay
-# n_anems = number of anemone locations to simulate
-f_SimPtsOnMap <- function(reef_sf,base_matrix,reef_locations,crs,n_anems=50,show_map=TRUE){
-
-  # prep data: raster with x (lon), y (lat), z (habitat quality)
-  reef_rast <- terra::rast(rasterFromXYZ(data.frame(x=reef_locations$lon,y=reef_locations$lat,z=reef_locations$q),crs=crs))
-  
+# Generates the specified number of anemones at random locations on the map
+# Calculates distance matrix between points
+# Inputs:
+#   reef_sf: sfc_multipolygon of the reef area
+#   hab_rast: SpatRaster object with two layers: reef (0 for open water and 1 for reef) and q (habitat quality)
+#   n_anems = number of anemone locations to simulate
+# Outputs:
+#   df_patches: dataframe with columns for id, x, y, and K (K=1 always for point version of sim)
+#   sfc_patches
+#   patch_dists
+#   K_rast
+f_SimPtsOnMap <- function(reef_sf,base_rast,n_anems=50,inwater_dist=FALSE,show_map=TRUE){
   # sample the anemones
-  anemone_spots <- st_sample(reef_sf,n_anems)
-  # get their habitat quality values
-  patch_locations <- terra::extract(reef_rast,vect(anemone_spots),xy=TRUE,search_radius=500) %>%
-    rename(q=z)
+  sfc_patches <- st_sample(reef_sf,n_anems)
+  # df_patches <- data.frame(st_coordinates(sfc_patches))
+  # npatch <- nrow(df_patches)
+  # df_patches$id <- 1:npatch
+  # df_patches$K <- 1
   
-  anemone_spots$q <- NULL
+  # make patch_dists
+  patch_dists <- st_distance(sfc_patches)
+  units(patch_dists) <- 'km'
   
-  ggplot()+geom_raster(reef_rast)
+  # K_rast is 1 everywhere
+  K_rast <- base_rast
+  names(K_rast) <- "K"
   
-  +geom_sf(data=anemone_spots,aes(color=patch_locations$q))
-  # patch_locations <- sfc_to_df(anemone_spots)[,c('x','y')]  %>%
-  #   mutate(depth=marmap::get.depth(bathy_raster,x,y,locator=FALSE)$depth) %>%
-  #   filter(depth>0) %>%
-  #   dplyr::select(id=point_id,x,y)
-  # 
-  # # in-water distance
-  # dists <- lc.dist(marmap_transmat,patch_locations[,c("x","y")],res='dist',meters=TRUE) #distances are in meters
-  # dists_mat <- matrix(0,nrow(patch_locations),nrow(patch_locations)) # convert into matrix form
-  # dists_mat[lower.tri(dists_mat,diag=FALSE)] <- dists
-  # dists_mat <- dists_mat/1000 # in km. Convert after the fact, because if lc.dist works in km it rounds to the nearest km.
-  # dists_mat[upper.tri(dists_mat,diag=FALSE)] <- t(dists_mat)[upper.tri(t(dists_mat),diag=FALSE)] # convert from lower tri to full
-  
-  # check for infinite distances
-  inf_dists <- which(dists_mat[,1]==Inf)
-  if(length(inf_dists)>0){
-    print(paste0("Removed ",length(inf_dists)," points at distance infinity"))
-    patch_locations <- patch_locations[-inf_dists,]
-    dists_mat <- dists_mat[-inf_dists,][,-inf_dists]
-  }
-  
-  # check for points too close together
-  v_remove=c()
-  for(pt_i in 1:nrow(patch_locations)){
-    too_close <- which(dists_mat[-pt_i,pt_i]<0.001) # points less than 1m away
-    if(length(too_close)>0) {v_remove <- c(v_remove,too_close)}
-  }
-  if(length(v_remove)>0){
-    patch_locations <- patch_locations[-v_remove,]
-    dists_mat <- dists_mat[-v_remove,][,-v_remove]
-    print(paste0("Points too close: ",length(v_remove)," removed"))
-  } 
-  
-  # optionally, plot
   if(show_map==TRUE){
-    g <- ggplot(anemone_spots)+
-      geom_contour_filled(data=marmap::as.xyz(bathy_raster),aes(x=V1,y=V2,z=V3),alpha=0.5)+
-      geom_sf(data=reef_sf,fill='black',color='black',alpha=0.2)+  
-      geom_sf(color='red',size=1)+
-      annotation_scale()+
-      theme_minimal()
+    g <- ggplot(reef_sf)+geom_sf()+geom_sf(data=sfc_patches)
     print(g)
   }
   
-  return(list(patch_locations=patch_locations,dists_mat=dists_mat))
+  return(list(K_rast=K_rast,sfc_patches=sfc_patches,patch_dists=patch_dists))
+  
 }
 
+# nav_rad = navigation radius (in km). When hab_type="grid", should be set to 1.
+f_MakeHabitat2 <- function(nav_rad,q_rast,K_rast,patch_dists,sfc_patches){
+  nx=dim(q_rast)[2]
+  ny=dim(q_rast)[1]
+  npatch <- nrow(df_patches)
+
+  ## put q_rast and K_rast together
+  hab_rast <- c(q_rast,K_rast)
+    
+  ## create df_patches (important: ID should be in the same order as in sfc_patches, or distance matrix will be wrong)
+  q_vect <- terra::extract(hab_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)
+  K_vect <- terra::extract(hab_rast$K,vect(sfc_patches),xy=TRUE,search_radius=500)
+  df_patches <- q_vect
+  df_patches$K <- K_vect$K[df_patches$ID]
+  df_patches$id <- df_patches$ID
+  df_patches$ID <- NULL
+  
+  ## make patch_angles
+  patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists)/(2*pi))
+  patch_angles[is.nan(patch_angles)] <- 1
+  
+  ## make overlap_discount
+  
+  
+  return(list(npatch=npatch,nx=nx,ny=ny,hab_rast=hab_rast,patch_locations=df_patches,
+              patch_dists=patch_dists,patch_angles=patch_angles))
+}
+
+
+# takes existing map (patch_locations)
+# or generates uniform grid (if patch_locations==NULL)
+# returns connectivity matrices and related objects for use in simulation
+# hab_type = "grid" (grid of habitat patches with x-y coordinates), "points" (anemone locations with gps points)
+# nav_rad = navigation radius (in km). Used when hab_type="points". When hab_type="grid", it's set to 1 so the patch_angle calculation still works.
+# patch_locations can be:
+#   1) NULL: generates an nx-x-ny grid
+#   2) if hab_type=="grid", a dataframe with columns id, x, y
+#   3) if hab_type=="points", a shapefile
+# if not given a distance matrix, it'll calculate as the crow flies. If you want in-water distance, do it beforehand and pass the distance matrix.
+f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE,hab_type="grid",nav_rad=1,dists_mat=NULL,overlap_method=1){
+  numCores <- parallelly::availableCores()
+  
+  # list of patch locations and IDs
+  # (dimensions: npatch x 3)
+  # if it's being generated here, "location" is the center of the grid square
+  if(is.null(patch_locations) & hab_type=="grid"){ # if not specified by an input map, then make one
+    patch_locations <- expand.grid(y=1:ny,x=1:nx) %>% # do y first so that patches are ordered columnwise, like the way R fills a matrix
+      rowid_to_column(var='id')
+  }
+  npatch <- nrow(patch_locations)
+  
+  if(hab_type=="grid"){
+    # a "map" of the patch numbers, spatially arranged
+    # (dimensions: nx x ny)
+    patch_map <- matrix(nrow=ny,ncol=nx)
+    for(i in 1:npatch){
+      patch_map[patch_locations$y[i],patch_locations$x[i]] <- patch_locations$id[i]
+    }
+    
+    # a matrix of distances between the centers of each patch (i.e., r in polar coords)
+    # (dimensions: npatch x npatch)
+    if(is.null(dists_mat)){
+      patch_dists <- matrix(nrow=npatch,ncol=npatch)
+      colnames(patch_dists) <- patch_locations$id
+      for(i in 1:npatch){
+        patch_dists[i,] = sqrt((patch_locations$x[i]-patch_locations$x)^2+(patch_locations$y[i]-patch_locations$y)^2)
+      }
+    } else {
+      patch_dists <- dists_mat
+    }
+    
+    
+    # set objects that are mainly used in points mode
+    overlap_discount=rep(1,times=npatch)
+    patch_sf=NULL
+  }
+  
+  if(hab_type=="points"){
+    # convert formats so patch_locations is a dataframe, and patch_sf is a shapefile
+    if(inherits(patch_locations,"sf")==FALSE){     # if patch_locations is not a shapefile
+      # create a shapefile of points from patch_locations
+      patch_sf <- st_as_sf(patch_locations,coords=c("x","y"))
+      st_crs(patch_sf) <- 4326
+    } else { # if patch_locations is a shapefile
+      patch_sf <- patch_locations
+      patch_locations <- cbind(st_drop_geometry(patch_sf),st_coordinates(patch_sf))
+    }
+    
+    # calculate distances between all points, in km
+    if(is.null(dists_mat)){
+      patch_dists <- st_distance(patch_sf)
+      units(patch_dists) <- "km"
+      patch_dists <- matrix(as.numeric(patch_dists),nrow=nrow(patch_dists))      
+    } else {
+      patch_dists <- dists_mat
+    }
+    
+    # ## OVERLAP METHOD 1:
+    if(overlap_method==1){
+      # if patches aren't on a grid,
+      # find the overlap of each patch's basin of attraction with other basins
+      # first define the basins
+      circs=st_buffer(patch_sf,dist=set_units(nav_rad,km)) # nav_rad is specified in km
+      onecirc_area=st_area(circs[1,])
+      # then calculate the overlaps (this is slow; should use mclapply)
+      all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = numCores)
+      all_overlaps <- unlist(all_overlaps)
+      overlap_discount <- 1/(1+all_overlaps)
+    }
+    
+    ## OVERLAP METHOD 2:
+    if(overlap_method==2){
+      n_neighbors <- rowSums(patch_dists<nav_rad) # number of points within distance nav_rad of focal point (including focal point)
+      overlap_discount <- 1/n_neighbors
+    }
+    
+    
+    # set objects that are mainly used in grid mode
+    patch_map=NULL
+  }
+  
+  # a matrix of the angle of the pie wedge between each patch
+  # (dimensions: npatch x npatch)
+  patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists)/(2*pi))
+  patch_angles[is.nan(patch_angles)] <- 1
+  
+  return(list(patch_locations=patch_locations,
+              patch_map=patch_map,
+              patch_dists=patch_dists,
+              patch_angles=patch_angles,
+              npatch=npatch,
+              overlap_discount=overlap_discount,
+              patch_sf=patch_sf))
+}
+
+
+###### other stuff from f_SimPtsOnMap
+  # # get their habitat quality values; store in patch_locations
+  # df_patches <- terra::extract(hab_rast[[2]],vect(anemone_spots),xy=TRUE,search_radius=500)
+  # # add a column for K (which will be 1 everywhere)
+  # df_patches$K <- 1
+  # 
+  # 
+  # 
+  # plot(hab_rast[[2]])
+  # points(patch_locations$x,patch_locations$y,col='red',pch=19,cex=0.2*patch_locations$q)
+  # 
+  # if(inwater_dist==TRUE){ # calculate in-water distance, if desired
+  #   dists <- lc.dist(marmap_transmat,patch_locations[,c("x","y")],res='dist',meters=TRUE) #distances are in meters
+  #   dists_mat <- matrix(0,nrow(patch_locations),nrow(patch_locations)) # convert into matrix form
+  #   dists_mat[lower.tri(dists_mat,diag=FALSE)] <- dists
+  #   dists_mat <- dists_mat/1000 # in km. Convert after the fact, because if lc.dist works in km it rounds to the nearest km.
+  #   dists_mat[upper.tri(dists_mat,diag=FALSE)] <- t(dists_mat)[upper.tri(t(dists_mat),diag=FALSE)] # convert from lower tri to full
+  # } else{ # otherwise, calculate euclidean distance
+  #   
+  # }
+  # 
+  # # check for infinite distances
+  # inf_dists <- which(dists_mat[,1]==Inf)
+  # if(length(inf_dists)>0){
+  #   print(paste0("Removed ",length(inf_dists)," points at distance infinity"))
+  #   patch_locations <- patch_locations[-inf_dists,]
+  #   dists_mat <- dists_mat[-inf_dists,][,-inf_dists]
+  # }
+  # 
+  # # check for points too close together
+  # v_remove=c()
+  # for(pt_i in 1:nrow(patch_locations)){
+  #   too_close <- which(dists_mat[-pt_i,pt_i]<0.001) # points less than 1m away
+  #   if(length(too_close)>0) {v_remove <- c(v_remove,too_close)}
+  # }
+  # if(length(v_remove)>0){
+  #   patch_locations <- patch_locations[-v_remove,]
+  #   dists_mat <- dists_mat[-v_remove,][,-v_remove]
+  #   print(paste0("Points too close: ",length(v_remove)," removed"))
+  # } 
+  # 
+  # # optionally, plot
+  # if(show_map==TRUE){
+  #   g <- ggplot(anemone_spots)+
+  #     geom_contour_filled(data=marmap::as.xyz(bathy_raster),aes(x=V1,y=V2,z=V3),alpha=0.5)+
+  #     geom_sf(data=reef_sf,fill='black',color='black',alpha=0.2)+  
+  #     geom_sf(color='red',size=1)+
+  #     annotation_scale()+
+  #     theme_minimal()
+  #   print(g)
+  # }
+###### other stuff from f_SimPtsOnMap
 
 
 
@@ -332,14 +527,14 @@ f_SimBValues <- function(patch_locations,dists_mat,phi,show_plot=FALSE,noise=0){
   dists_mat_NA <- dists_mat
   diag(dists_mat_NA) <- NA
   nearest_dists <- do.call(pmin,c(as.data.frame(dists_mat_NA),na.rm=TRUE))
-#  min_band <- min(nearest_dists) # minimum distance so everybody has at least one neighbor
+  #  min_band <- min(nearest_dists) # minimum distance so everybody has at least one neighbor
   min_band <- median(nearest_dists)
   band_incr <- mean(nearest_dists) # average distance to each feature's nearest neighboring feature
   farthest_dists <- do.call(pmax,c(as.data.frame(dists_mat_NA),na.rm=TRUE)) 
   max_band <- min(farthest_dists) # max dist so everybody still has at least one neighbor
   
   incr_moran <- data.frame(band=seq(from=min_band,by=band_incr,to=max_band),z=NA, MI=NA, p=NA)
-
+  
   for(i in 1:nrow(incr_moran)){
     dist_band <- incr_moran$band[i]
     
@@ -377,115 +572,6 @@ f_SimBValues <- function(patch_locations,dists_mat,phi,show_plot=FALSE,noise=0){
   
   return(list(patch_locations=patch_locations,sp_aut_dist=sp_aut_dist,incr_moran=incr_moran))
 }
-
-# takes existing map (patch_locations)
-# or generates uniform grid (if patch_locations==NULL)
-# returns connectivity matrices and related objects for use in simulation
-# hab_type = "grid" (grid of habitat patches with x-y coordinates), "points" (anemone locations with gps points)
-# nav_rad = navigation radius (in km). Used when hab_type="points". When hab_type="grid", it's set to 1 so the patch_angle calculation still works.
-# patch_locations can be:
-#   1) NULL: generates an nx-x-ny grid
-#   2) if hab_type=="grid", a dataframe with columns id, x, y
-#   3) if hab_type=="points", a shapefile
-# if not given a distance matrix, it'll calculate as the crow flies. If you want in-water distance, do it beforehand and pass the distance matrix.
-f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE,hab_type="grid",nav_rad=1,dists_mat=NULL,overlap_method=1){
-  numCores <- parallelly::availableCores()
-  
-  # list of patch locations and IDs
-  # (dimensions: npatch x 3)
-  # if it's being generated here, "location" is the center of the grid square
-  if(is.null(patch_locations) & hab_type=="grid"){ # if not specified by an input map, then make one
-    patch_locations <- expand.grid(y=1:ny,x=1:nx) %>% # do y first so that patches are ordered columnwise, like the way R fills a matrix
-      rowid_to_column(var='id')
-  }
-  npatch <- nrow(patch_locations)
-  
-  if(hab_type=="grid"){
-    # a "map" of the patch numbers, spatially arranged
-    # (dimensions: nx x ny)
-    patch_map <- matrix(nrow=ny,ncol=nx)
-    for(i in 1:npatch){
-      patch_map[patch_locations$y[i],patch_locations$x[i]] <- patch_locations$id[i]
-    }
-    
-    # a matrix of distances between the centers of each patch (i.e., r in polar coords)
-    # (dimensions: npatch x npatch)
-    if(is.null(dists_mat)){
-      patch_dists <- matrix(nrow=npatch,ncol=npatch)
-      colnames(patch_dists) <- patch_locations$id
-      for(i in 1:npatch){
-        patch_dists[i,] = sqrt((patch_locations$x[i]-patch_locations$x)^2+(patch_locations$y[i]-patch_locations$y)^2)
-      }
-    } else {
-      patch_dists <- dists_mat
-    }
-    
-    
-    # set objects that are mainly used in points mode
-    overlap_discount=rep(1,times=npatch)
-    patch_sf=NULL
-  }
-  
-  if(hab_type=="points"){
-    # convert formats so patch_locations is a dataframe, and patch_sf is a shapefile
-    if(inherits(patch_locations,"sf")==FALSE){     # if patch_locations is not a shapefile
-      # create a shapefile of points from patch_locations
-      patch_sf <- st_as_sf(patch_locations,coords=c("x","y"))
-      st_crs(patch_sf) <- 4326
-    } else { # if patch_locations is a shapefile
-      patch_sf <- patch_locations
-      patch_locations <- cbind(st_drop_geometry(patch_sf),st_coordinates(patch_sf))
-    }
-    
-    # calculate distances between all points, in km
-    if(is.null(dists_mat)){
-      patch_dists <- st_distance(patch_sf)
-      units(patch_dists) <- "km"
-      patch_dists <- matrix(as.numeric(patch_dists),nrow=nrow(patch_dists))      
-    } else {
-      patch_dists <- dists_mat
-    }
-    
-    # ## OVERLAP METHOD 1:
-    if(overlap_method==1){
-      # if patches aren't on a grid,
-      # find the overlap of each patch's basin of attraction with other basins
-      # first define the basins
-      circs=st_buffer(patch_sf,dist=set_units(nav_rad,km)) # nav_rad is specified in km
-      onecirc_area=st_area(circs[1,])
-      # then calculate the overlaps (this is slow; should use mclapply)
-      all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = numCores)
-      all_overlaps <- unlist(all_overlaps)
-      overlap_discount <- 1/(1+all_overlaps)
-    }
-    
-    ## OVERLAP METHOD 2:
-    if(overlap_method==2){
-      n_neighbors <- rowSums(patch_dists<nav_rad) # number of points within distance nav_rad of focal point (including focal point)
-      overlap_discount <- 1/n_neighbors
-    }
-    
-    
-    # set objects that are mainly used in grid mode
-    patch_map=NULL
-  }
-  
-  # a matrix of the angle of the pie wedge between each patch
-  # (dimensions: npatch x npatch)
-  patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists)/(2*pi))
-  patch_angles[is.nan(patch_angles)] <- 1
-  
-  return(list(patch_locations=patch_locations,
-              patch_map=patch_map,
-              patch_dists=patch_dists,
-              patch_angles=patch_angles,
-              npatch=npatch,
-              overlap_discount=overlap_discount,
-              patch_sf=patch_sf))
-}
-
-
-
 
 # inputs: kernel, seascape
 # output: rates of dispersal from each patch to each other patch

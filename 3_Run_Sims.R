@@ -5,7 +5,7 @@ source('0_Setup.R')
 # list2env(x=params,envir=environment())
 
 #### Set parameters (or adjust them as desired, if they were loaded above)
-nsteps <- 1000 # timesteps
+nsteps <- 10 # timesteps
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- seq(from=0.01,to=5,length.out=5) # values the shape parameter can take
 v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take

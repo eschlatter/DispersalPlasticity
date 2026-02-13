@@ -15,7 +15,7 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),met
   # create empty raster
   endpt_lat <- as.numeric(geosphere::destPoint(c(0,0),b=0,d=y_dist)[,'lat'])
   endpt_lon <- as.numeric(geosphere::destPoint(c(0,0),b=90,d=x_dist)[,'lon'])
-  base_rast <- rast(xmin=0,xmax=endpt_lon,ymin=0,ymax=endpt_lat,resolution=c(0.00005,0.00005))
+  base_rast <- rast(xmin=0,xmax=endpt_lon,ymin=0,ymax=endpt_lat,resolution=resol)
   crs(base_rast) <- "epsg:4326"
   nx=ncol(base_rast)
   ny=nrow(base_rast)
@@ -194,10 +194,9 @@ f_SimPtsOnMap <- function(reef_sf,base_rast,n_anems=50,inwater_dist=FALSE,show_m
 }
 
 # nav_rad = navigation radius (in km). When hab_type="grid", should be set to 1.
-f_MakeHabitat2 <- function(nav_rad,q_rast,K_rast,patch_dists,sfc_patches){
-  nx=dim(q_rast)[2]
-  ny=dim(q_rast)[1]
-  npatch <- nrow(df_patches)
+f_MakeHabitat <- function(nav_rad,q_rast,K_rast,patch_dists,sfc_patches,reef_sf,overlap_method="simple"){
+  units(nav_rad) <- 'km'
+  npatch <- length(sfc_patches)
 
   ## put q_rast and K_rast together
   hab_rast <- c(q_rast,K_rast)
@@ -209,201 +208,45 @@ f_MakeHabitat2 <- function(nav_rad,q_rast,K_rast,patch_dists,sfc_patches){
   df_patches$K <- K_vect$K[df_patches$ID]
   df_patches$id <- df_patches$ID
   df_patches$ID <- NULL
+  df_patches$b <- f_q_to_b(df_patches$q) # calculate reproductive rate (b) from habitat quality (q)
   
   ## make patch_angles
   patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists)/(2*pi))
   patch_angles[is.nan(patch_angles)] <- 1
   
   ## make overlap_discount
-  
-  
-  return(list(npatch=npatch,nx=nx,ny=ny,hab_rast=hab_rast,patch_locations=df_patches,
-              patch_dists=patch_dists,patch_angles=patch_angles))
-}
-
-
-# takes existing map (patch_locations)
-# or generates uniform grid (if patch_locations==NULL)
-# returns connectivity matrices and related objects for use in simulation
-# hab_type = "grid" (grid of habitat patches with x-y coordinates), "points" (anemone locations with gps points)
-# nav_rad = navigation radius (in km). Used when hab_type="points". When hab_type="grid", it's set to 1 so the patch_angle calculation still works.
-# patch_locations can be:
-#   1) NULL: generates an nx-x-ny grid
-#   2) if hab_type=="grid", a dataframe with columns id, x, y
-#   3) if hab_type=="points", a shapefile
-# if not given a distance matrix, it'll calculate as the crow flies. If you want in-water distance, do it beforehand and pass the distance matrix.
-f_MakeHabitat <- function(nx,ny,v_alphas,v_thetas,patch_locations=NULL,conn_out=FALSE,hab_type="grid",nav_rad=1,dists_mat=NULL,overlap_method=1){
-  numCores <- parallelly::availableCores()
-  
-  # list of patch locations and IDs
-  # (dimensions: npatch x 3)
-  # if it's being generated here, "location" is the center of the grid square
-  if(is.null(patch_locations) & hab_type=="grid"){ # if not specified by an input map, then make one
-    patch_locations <- expand.grid(y=1:ny,x=1:nx) %>% # do y first so that patches are ordered columnwise, like the way R fills a matrix
-      rowid_to_column(var='id')
-  }
-  npatch <- nrow(patch_locations)
-  
-  if(hab_type=="grid"){
-    # a "map" of the patch numbers, spatially arranged
-    # (dimensions: nx x ny)
-    patch_map <- matrix(nrow=ny,ncol=nx)
-    for(i in 1:npatch){
-      patch_map[patch_locations$y[i],patch_locations$x[i]] <- patch_locations$id[i]
-    }
-    
-    # a matrix of distances between the centers of each patch (i.e., r in polar coords)
-    # (dimensions: npatch x npatch)
-    if(is.null(dists_mat)){
-      patch_dists <- matrix(nrow=npatch,ncol=npatch)
-      colnames(patch_dists) <- patch_locations$id
-      for(i in 1:npatch){
-        patch_dists[i,] = sqrt((patch_locations$x[i]-patch_locations$x)^2+(patch_locations$y[i]-patch_locations$y)^2)
-      }
-    } else {
-      patch_dists <- dists_mat
-    }
-    
-    
-    # set objects that are mainly used in points mode
-    overlap_discount=rep(1,times=npatch)
-    patch_sf=NULL
+  if(overlap_method=="complicated"){
+    # if patches aren't on a grid,
+    # find the overlap of each patch's basin of attraction with other basins
+    # first define the basins
+    circs=st_buffer(sfc_patches,dist=nav_rad) # nav_rad is specified in km
+    onecirc_area=st_area(circs[1,])
+    # then calculate the overlaps (this is slow; should use mclapply)
+    all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = parallelly::availableCores())
+    all_overlaps <- unlist(all_overlaps)
+    overlap_discount <- 1/(1+all_overlaps)
+  } else{
+    n_neighbors <- rowSums(patch_dists<nav_rad) # number of points within distance nav_rad of focal point (including focal point)
+    overlap_discount <- 1/n_neighbors
   }
   
-  if(hab_type=="points"){
-    # convert formats so patch_locations is a dataframe, and patch_sf is a shapefile
-    if(inherits(patch_locations,"sf")==FALSE){     # if patch_locations is not a shapefile
-      # create a shapefile of points from patch_locations
-      patch_sf <- st_as_sf(patch_locations,coords=c("x","y"))
-      st_crs(patch_sf) <- 4326
-    } else { # if patch_locations is a shapefile
-      patch_sf <- patch_locations
-      patch_locations <- cbind(st_drop_geometry(patch_sf),st_coordinates(patch_sf))
-    }
-    
-    # calculate distances between all points, in km
-    if(is.null(dists_mat)){
-      patch_dists <- st_distance(patch_sf)
-      units(patch_dists) <- "km"
-      patch_dists <- matrix(as.numeric(patch_dists),nrow=nrow(patch_dists))      
-    } else {
-      patch_dists <- dists_mat
-    }
-    
-    # ## OVERLAP METHOD 1:
-    if(overlap_method==1){
-      # if patches aren't on a grid,
-      # find the overlap of each patch's basin of attraction with other basins
-      # first define the basins
-      circs=st_buffer(patch_sf,dist=set_units(nav_rad,km)) # nav_rad is specified in km
-      onecirc_area=st_area(circs[1,])
-      # then calculate the overlaps (this is slow; should use mclapply)
-      all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = numCores)
-      all_overlaps <- unlist(all_overlaps)
-      overlap_discount <- 1/(1+all_overlaps)
-    }
-    
-    ## OVERLAP METHOD 2:
-    if(overlap_method==2){
-      n_neighbors <- rowSums(patch_dists<nav_rad) # number of points within distance nav_rad of focal point (including focal point)
-      overlap_discount <- 1/n_neighbors
-    }
-    
-    
-    # set objects that are mainly used in grid mode
-    patch_map=NULL
-  }
-  
-  # a matrix of the angle of the pie wedge between each patch
-  # (dimensions: npatch x npatch)
-  patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists)/(2*pi))
-  patch_angles[is.nan(patch_angles)] <- 1
-  
-  return(list(patch_locations=patch_locations,
-              patch_map=patch_map,
+  return(list(npatch=npatch,
+              hab_rast=hab_rast,
+              patch_locations=df_patches,
               patch_dists=patch_dists,
               patch_angles=patch_angles,
-              npatch=npatch,
               overlap_discount=overlap_discount,
-              patch_sf=patch_sf))
+              reef_sf=reef_sf))
 }
 
-
-###### other stuff from f_SimPtsOnMap
-  # # get their habitat quality values; store in patch_locations
-  # df_patches <- terra::extract(hab_rast[[2]],vect(anemone_spots),xy=TRUE,search_radius=500)
-  # # add a column for K (which will be 1 everywhere)
-  # df_patches$K <- 1
-  # 
-  # 
-  # 
-  # plot(hab_rast[[2]])
-  # points(patch_locations$x,patch_locations$y,col='red',pch=19,cex=0.2*patch_locations$q)
-  # 
-  # if(inwater_dist==TRUE){ # calculate in-water distance, if desired
-  #   dists <- lc.dist(marmap_transmat,patch_locations[,c("x","y")],res='dist',meters=TRUE) #distances are in meters
-  #   dists_mat <- matrix(0,nrow(patch_locations),nrow(patch_locations)) # convert into matrix form
-  #   dists_mat[lower.tri(dists_mat,diag=FALSE)] <- dists
-  #   dists_mat <- dists_mat/1000 # in km. Convert after the fact, because if lc.dist works in km it rounds to the nearest km.
-  #   dists_mat[upper.tri(dists_mat,diag=FALSE)] <- t(dists_mat)[upper.tri(t(dists_mat),diag=FALSE)] # convert from lower tri to full
-  # } else{ # otherwise, calculate euclidean distance
-  #   
-  # }
-  # 
-  # # check for infinite distances
-  # inf_dists <- which(dists_mat[,1]==Inf)
-  # if(length(inf_dists)>0){
-  #   print(paste0("Removed ",length(inf_dists)," points at distance infinity"))
-  #   patch_locations <- patch_locations[-inf_dists,]
-  #   dists_mat <- dists_mat[-inf_dists,][,-inf_dists]
-  # }
-  # 
-  # # check for points too close together
-  # v_remove=c()
-  # for(pt_i in 1:nrow(patch_locations)){
-  #   too_close <- which(dists_mat[-pt_i,pt_i]<0.001) # points less than 1m away
-  #   if(length(too_close)>0) {v_remove <- c(v_remove,too_close)}
-  # }
-  # if(length(v_remove)>0){
-  #   patch_locations <- patch_locations[-v_remove,]
-  #   dists_mat <- dists_mat[-v_remove,][,-v_remove]
-  #   print(paste0("Points too close: ",length(v_remove)," removed"))
-  # } 
-  # 
-  # # optionally, plot
-  # if(show_map==TRUE){
-  #   g <- ggplot(anemone_spots)+
-  #     geom_contour_filled(data=marmap::as.xyz(bathy_raster),aes(x=V1,y=V2,z=V3),alpha=0.5)+
-  #     geom_sf(data=reef_sf,fill='black',color='black',alpha=0.2)+  
-  #     geom_sf(color='red',size=1)+
-  #     annotation_scale()+
-  #     theme_minimal()
-  #   print(g)
-  # }
-###### other stuff from f_SimPtsOnMap
-
-
-
-# ## plasticity function: plasticity in dispersal kernel in response to K (carrying capacity) of patch
-# # b, p, alpha, theta: current set of parameter values
-# # b_bad, b_good, b_neutral: values of b that trigger plastic responses
-# # n_alpha, n_theta: length of v_alpha and v_theta; used to avoid exceeding the maximum parameter values with plastic response
-# f_plasticity <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_good=9, n_alpha=5, n_theta=5){
-#   if(b_good!=b_neutral){ # check for the possibility that there isn't variation in b. Assuming there is:
-#     alpha_add <- round((b_neutral-b_i)/(b_good-b_neutral))} # calculate what to add to the alpha index, based on plasticity. It's -1, 0, or +1.
-#   else alpha_add <- 0
-#   alpha_plastic <- oob_squish(alpha_i+round(p_i)*alpha_add, c(1,n_alpha))
-#   theta_plastic <- theta_i
-#   return(list(alpha_plastic=alpha_plastic, theta_plastic=theta_plastic))
-# }
-# f_plasticity2 <- function(b_i, p_i, alpha_i, theta_i, b_bad=1, b_neutral=5, b_good=9, n_alpha=5, n_theta=5){
-#   if(b_good!=b_neutral){ # check for the possibility that there isn't variation in b. Assuming there is:
-#     alpha_add <- round((b_neutral-b_i)/(b_good-b_neutral))} # calculate what to add to the alpha index, based on plasticity. It's -1, 0, or +1.
-#   else alpha_add <- 0
-#   alpha_plastic <- oob_squish(alpha_i+round(p_i)*alpha_add, c(1,n_alpha))
-#   theta_plastic <- theta_i
-#   return(data.frame(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
-# }
+# function to calculate reproductive rate (b) from habitat quality (q)
+# right now this is boring, but maybe we'll want it to do something more interesting at some point
+# input: vector q
+# output: vector b
+f_q_to_b <- function(q){
+  b=as.integer(q)
+  return(b)
+}
 
 ## plasticity function: plasticity in dispersal kernel in response to K (carrying capacity) of patch
 ## inputs: vectors of values for K, p, alpha, and theta. 
@@ -445,55 +288,6 @@ f_plasticityb <- function(b, p, alpha, theta, n_alpha=5, n_theta=5, bmin=NULL, b
   return(list(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
 }
 
-# Inputs:
-#   base_map: a matrix representing habitat configuration (0=open ocean, 1=reef)
-#   if no base map is provided, specify:
-#     k (to get dimension of habitat)
-#     p (proportion of map covered)
-#     h_base (aggregation of habitat area)
-#   K_range (vector with 2 elements): range of carrying capacity values the final map should have 
-#   h: level of aggregation of K values (K is generated via fractal landscape method)
-# Returns:
-#   patch_locations: a dataframe of habitable patches, their locations, and their K values
-#   K in vector form
-#   nx, ny: dimensions of the map
-f_GenerateMapWithK <- function(base_map=NULL,K_range,h=0.8,k=5,p=0.3,h_base=0.7,plot_flag=FALSE){
-  # if no base map is provided, simulate one
-  if(is.null(base_map)){
-    base_map=fracland(k=k,h=h_base,p=1-p,binary=TRUE,plotflag=FALSE)
-  }
-  
-  # add habitat values on top of base map
-  nx=ncol(base_map)
-  ny=nrow(base_map)
-  # find the k value to use in fracland function, given the dimensions of the base map
-  dimens <- (2^(1:15)+1)
-  k <- first(which(dimens>=max(nx,ny)))
-  # generate a fractal layer
-  frac_map <- fracland(k=k,h=h,binary=FALSE,plotflag=FALSE)
-  # convert to desired range of K values
-  frac_map <- (frac_map-min(frac_map))/(max(frac_map)-min(frac_map)) # first to 0-1
-  frac_map <- frac_map*(K_range[2]-K_range[1])+K_range[1]
-  # create full map
-  full_map <- base_map
-  full_map[which(base_map==TRUE)] <- frac_map[which(base_map==TRUE)]
-  
-  # put things in the right format for simulation inputs
-  patch_locations <- as.data.frame(which(full_map!=0,arr.ind=TRUE)) %>%
-    rename(y=row,x=col) %>%
-    rowid_to_column(var='id')
-  patch_locations$K_i <- round(full_map[full_map!=0])
-  K <- patch_locations$K_i
-  
-  if(plot_flag==TRUE){
-    #    dev.new()
-    f_Plot_Landscape(patch_locations,nx,ny)
-    #    a <- dev.list()
-    #    dev.set(which=as.numeric(a['RStudioGD']))
-  }
-  
-  return(list(patch_locations=patch_locations,K=K,nx=nx,ny=ny))
-}
 
 f_PlotDecayFn <- function(phi){
   plot(1:100,exp(-phi^2*1:100),type='l',main=paste0('phi=',phi))
@@ -629,58 +423,6 @@ f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, pa
                                                patch_dists=patch_dists,patch_angles=patch_angles,overlap_discount=overlap_discount,nav_rad=nav_rad,numCores=numCores)
 }
 
-# # Take a vector of a time series, and identify the point when it has reached equilibrium
-# # this is an ad hoc method, but it seems like it kind of works:
-# #   it's at least good at cutting out enough of the early portion of the time series.
-# #   less good at detecting smaller changes in equilibrium level after the first move away from initial conditions.
-# # inputs: v_t, vector of time series data
-# # returns: equil_start, timepoint where equilibrium has been reached
-# f_FindEquil <- function(v_t,showplot=FALSE){
-#   nt=length(v_t)
-#   equil_pt <- NULL
-#   
-#   for(i in 1:19){ # try up to 19 possible timepoints
-#     # split data into training and testing
-#     end_train=i*nt/20
-#     train <- v_t[1:end_train]
-#     test <- v_t[(end_train+1):nt]
-#     
-#     # make an ARIMA model with the training data
-#     m1 <- auto.arima(train,seasonal=FALSE)
-#     # use it to forecast for the length of the test data
-#     m1_fore <- forecast(m1,nt-end_train,level=c(95))
-#     
-#     # check if the test data lies in the model's bounds of prediction
-#     # if it has reached equilibrium, then we're just predicting the mean with increasingly large confidence intervals -- that's ok.
-#     # if it hasn't reached equilibrium yet, then either 1) there's a trend in the training data that doesn't continue in the test data,
-#     # or 2) there's a high-order autoregression signal in the training data that means the confidence bounds are really huge
-#     # we test for both possibilities below
-#     in_bounds <- (test>m1_fore$lower)&(test<m1_fore$upper)
-#     pct_in_bounds <- sum(in_bounds)/length(in_bounds)
-#     max_CI_width <- as.numeric(tail(m1_fore$upper,1))-as.numeric(tail(m1_fore$lower,1))
-#     #test_autocorr_strength <- m1$arma[1]<3
-#     test_autocorr_strength <- max_CI_width<(100*diff(range(v_t)))
-#     
-#     # if so, and if the bounds of prediction aren't enormous, then choose this timepoint and stop the loop
-#     # (i.e., the time series has reached equilibrium by the end of the training segment. We can use the test segment as equilibrium data.)
-#     if(pct_in_bounds>0.95 & (test_autocorr_strength==TRUE)){
-#       equil_pt <- end_train
-#       break
-#     } 
-#   }
-#   
-#   if(showplot==TRUE & !is.null(equil_pt)){
-#     par(mfrow=c(2,1))
-#     plot(1:nt,v_t,type='l')
-#     lines(1:length(train),train,col='blue')
-#     plot(m1_fore)
-#     lines(1:nt,v_t)
-#     par(mfrow=c(1,1))
-#   }
-#   
-#   if(is.null(equil_pt)) print("Warning: no equilibrium found")
-#   return(equil_pt) # if no equilibrium point is found, then the returned value is nt.
-# }
 
 # used in lapply in f_MakeHabitat:
 # find area of overlap of one circle (j) with all other circles

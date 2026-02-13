@@ -1,8 +1,8 @@
 source('0_Setup.R')
 
 # f_GenerateBasemap
-x_dist=500
-y_dist=200
+x_dist=5000
+y_dist=5000
 resol=c(0.0005,0.0005)
 h=0.9
 prop_hab=0.2
@@ -12,7 +12,6 @@ base_rast <- hab_sim$base_rast
 bathy_rast <- hab_sim$bathy_rast
 reef_sf <- hab_sim$reef_sf
 patch_dists <- hab_sim$patch_dists
-df_patches <- hab_sim$df_patches
 sfc_patches <- hab_sim$sfc_patches
 plot(base_rast)
 plot.bathy(bathy_rast)
@@ -36,3 +35,8 @@ pts_out <- f_SimPtsOnMap(reef_sf,base_rast,n_anems=50,inwater_dist=FALSE,show_ma
 K_rast=pts_out$K_rast
 sfc_patches=pts_out$sfc_patches
 patch_dists=pts_out$patch_dists
+
+# f_MakeHabitat
+make_hab_out <- f_MakeHabitat(nav_rad=quantile(patch_dists,0.1),q_rast,K_rast,
+                               patch_dists,sfc_patches,reef_sf,overlap_method="simple")
+list2env(x=make_hab_out,envir=environment())

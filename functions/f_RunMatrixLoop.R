@@ -128,29 +128,21 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
   starttime <- proc.time()
   numCores <- parallelly::availableCores()
   
+  # load parameters
   list2env(x=params,envir=environment())
-  
-  # make each run replicable, or use seed from existing run
-  # if(is.null(seed)) seed = .Random.seed
-  # set.seed(seed)
-  
-  # Data structures to describe space and dispersal
-  # -------------------------------------------------------------------
-  # see utility functions/f_MakeHabitat for details on what's in each object
-  if(is.null(makehab_output)) makehab_output <- f_MakeHabitat(nx=nx,ny=ny,v_alphas=v_alphas,v_thetas=v_thetas,patch_locations=patch_locations,
-                                                              hab_type=hab_type,nav_rad=nav_rad,numCores=numCores)
-  list2env(x=makehab_output,envir=environment())
 
-  # set patch-specific characteristics
-  if(hab_type=="points") patch_locations$K_i <- 1
-  K <- patch_locations$K_i # K records the initial values; the values in patch_locations$K_i could change with disturbance
-  b <- patch_locations$b_i # b records the initial values; the values in patch_locations$b_i could change with disturbance
-  # put habitat info into params so it's accessible in the simulation output
-  params$patch_locations <- patch_locations
-  params$patch_sf <- patch_sf
+  # load habitat data structures (see f_MakeHabitat for details on what's in each object)
+  list2env(x=makehab_output,envir=environment()) 
+  if(hab_type=="points") patch_locations$K <- 1 # sometimes these end up as 0 from map resolution issues
+  # save original values, in case they're modified by disturbance
+  K <- patch_locations$K 
+  b <- patch_locations$b
+  q <- patch_locations$q
+  units(patch_dists) <- NULL
+  units(nav_rad) <- NULL
+  units(patch_angles) <- NULL
   
-  # Data structures to describe population
-  # -------------------------------------------------------------------
+  ##### Data structures to describe population ######
   
   ## 1. group_index: all unique combinations of parameters alpha, theta, and p
   group_index <- expand.grid(alpha=1:length(v_alphas),theta=1:length(v_thetas),p=1:length(v_p))
@@ -168,7 +160,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
   start_grps <- which((group_index$alpha %in% alpha_start) & (group_index$theta %in% theta_start) & (group_index$p %in% p_start))
   start_probs <- rep(0,ngroups)
   start_probs[start_grps] <- 1
-  starts <- lapply(1:npatch,function(i) as.vector(rmultinom(n=1,size=patch_locations$K_i[i],prob=start_probs))) 
+  starts <- lapply(1:npatch,function(i) as.vector(rmultinom(n=1,size=patch_locations$K[i],prob=start_probs))) 
   previous_pop <- do.call(rbind,starts)
   
   ## 3. mutation_destinations: for each parameter groups, what parameter groups can a single mutation reach?
@@ -222,8 +214,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
   moran_weights <- 1/(patch_dists) 
   diag(moran_weights) <- 0
   
-  # Simulate
-  # -------------------------------------------------------------------
+  ################ Simulate ###################
   interval_starttime <- proc.time()
   for(t in 2:nsteps){
     temp_pop[ ] <- 0 # reset temp_pop
@@ -232,20 +223,20 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
     
     if(t %% 10 == 0){ # disturbances last for 10 timesteps
       # first, reset all K's from any disturbance that occurred 10 timesteps previously
-      if(prod(patch_locations$K_i == as.vector(K))==0){
-        patch_locations$K_i = as.vector(K)
-        all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K_i
+      if(prod(patch_locations$K == as.vector(K))==0){
+        patch_locations$K = as.vector(K)
+        all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K
         print(paste("t =",t,"reset connectivity matrices"))
       }
       
       # then make a new disturbance (maybe)
       if(rbinom(n=1,size=1,p=disturb_prob)==1){
         print(paste("t =",t,"disturbance"))
-        all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K_i
+        all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K
         
         disturb <- ideal.map(ny, nx, p = 0.2, nshape = 1, type = "circle", maxval = 1, minval = 0, binmap = TRUE, rasterflag = FALSE, plotflag=FALSE)
         disturb_patches <- as.numeric(na.omit(patch_map[disturb!=0]))
-        patch_locations$K_i[disturb_patches] <- 0
+        patch_locations$K[disturb_patches] <- 0
       }
     }
     
@@ -268,7 +259,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
                                                                                 v_p=v_p, v_alphas=v_alphas, v_thetas=v_thetas, 
                                                                                 nav_rad=nav_rad, numCores=numCores) # calculate this matrix, if it hasn't been used before
       conn_mat <- all_conn_mats[[g]] # otherwise, grab it from the list
-      to_patch <- (1-p_penalty)*patch_locations$b_i*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
+      to_patch <- (1-p_penalty)*patch_locations$b*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
       
       # Divide up to_patch among parameter groups that are the result of mutation
       temp_pop[,g] <- (1-mu)*to_patch+temp_pop[,g]
@@ -306,8 +297,9 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       
       if(show_plot==TRUE){
         if(hab_type=="points"){
-          g_map_abund <- ggplot(patch_sf)+
-            geom_sf(aes(color=factor(rowSums(new_pop))))+
+          g_map_abund <- ggplot(reef_sf)+
+            geom_sf()+
+            geom_sf(data=sfc_patches,aes(color=factor(rowSums(new_pop))))+
             labs(color="Abundance",title=paste0("t=",t))+
             scale_color_manual(values=c("blue","red"),breaks=c(1,0))+
             theme_minimal()+
@@ -331,7 +323,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
       }
       
       if("kern" %in% keep){
-        Pij_b <- matrix(patch_locations$b_i,byrow=FALSE,nrow=npatch,ncol=ngroups)
+        Pij_b <- matrix(patch_locations$b,byrow=FALSE,nrow=npatch,ncol=ngroups)
         Pij_eff <- f_plasticityb(Pij_b,Pij_p,Pij_alpha,Pij_theta,length(v_alphas),length(v_thetas)) # indices, not values
         
         ## fundamental kernel properties (i.e., based on inherited alpha and theta, but not plasticity)
@@ -392,7 +384,7 @@ f_RunMatrixLoopLite <- function(params, keep=list("abund","p","kern","sp_struct"
 f_Competition <- function(i_patch,patch_abunds,patch_locations,temp_pop,ngroups){
   if(patch_abunds[i_patch]>0){ # if the patch isn't empty
     survivors=t(rmultinom(n=1,
-                          size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose groups for min(abundance, K) survivors (rounds down)
+                          size=min(patch_abunds[i_patch],patch_locations$K[i_patch]), # choose groups for min(abundance, K) survivors (rounds down)
                           prob = temp_pop[i_patch,])) # probability of each group being chosen depends on its current abundance
   }
   else survivors <- vector(mode='integer',length=ngroups)

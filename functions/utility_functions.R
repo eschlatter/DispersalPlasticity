@@ -248,26 +248,6 @@ f_q_to_b <- function(q){
   return(b)
 }
 
-## plasticity function: plasticity in dispersal kernel in response to K (carrying capacity) of patch
-## inputs: vectors of values for K, p, alpha, and theta. 
-## p should be the actual value of p; alpha and theta should be indices in v_alpha and v_theta
-f_plasticityK <- function(K, p, alpha, theta, n_alpha=5, n_theta=5, Kmin=NULL, Kmax=NULL){
-  # if alpha and theta are scalars, recycle them to vectors of same length as K
-  if(length(alpha)==1) alpha=rep_len(alpha,length(K))
-  if(length(theta)==1) theta=rep_len(theta,length(K))
-  # define plasticity thresholds of K, if not given
-  if(is.null(Kmin)) Kmin=min(K)
-  if(is.null(Kmax)) Kmax=max(K)
-  # if no variation in K, no plasticity
-  if(Kmin==Kmax) alpha_plastic <- alpha
-  else {
-    alpha_add <- round(ifelse(K<Kmin, p, ifelse(K>Kmax, -p, p-2*p*(K-Kmin)/(Kmax-Kmin))))
-    alpha_plastic <- oob_squish(alpha+alpha_add, c(1,n_alpha))
-  }
-  theta_plastic <- theta
-  return(list(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
-}
-
 ## plasticity function: plasticity in dispersal kernel in response to b (reproductive output) of patch
 ## inputs: vectors of values for b, p, alpha, and theta. 
 ## p should be the actual value of p; alpha and theta should be indices in v_alpha and v_theta
@@ -288,93 +268,6 @@ f_plasticityb <- function(b, p, alpha, theta, n_alpha=5, n_theta=5, bmin=NULL, b
   return(list(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
 }
 
-
-f_PlotDecayFn <- function(phi){
-  plot(1:100,exp(-phi^2*1:100),type='l',main=paste0('phi=',phi))
-}
-
-library(spdep)
-# generates spatially-autocorrelated b_i values
-# takes a set of points (patch_locations) and the associated distance matrix (dists_mat)
-# returns patch_locations, with a column added for b_i
-f_SimBValues <- function(patch_locations,dists_mat,phi,show_plot=FALSE,noise=0){
-  sp_aut_dist=NA
-  # simulate b values
-  cov_Sigma <- exp(-phi*dists_mat) # let covariance decay exponentially with distance
-  # check in case covariance matrix isn't positive definite (maybe because phi is too small)
-  if(min(eigen(cov_Sigma)$values)<(-1e-14)){
-    print("Warning: covariance matrix is not positive definite. No b_i values simulated.")
-    return(list(patch_locations=patch_locations,sp_aut_dist=sp_aut_dist))
-  }
-  patch_locations$b_i <- mvrnorm(n=1, mu=rep(5,times=nrow(patch_locations)), Sigma=cov_Sigma+noise*diag(nrow(patch_locations)))
-  
-  # optionally, plot
-  if(show_plot==TRUE){
-    g <- ggplot(patch_locations, aes(x=x,y=y,color=b_i))+
-      geom_point()+
-      labs(title=paste0('phi=',phi))+
-      theme_minimal()
-    print(g)
-  }
-  
-  # calculate incremental spatial autocorrelation (like Robin's paper)
-  dists_mat_NA <- dists_mat
-  diag(dists_mat_NA) <- NA
-  nearest_dists <- do.call(pmin,c(as.data.frame(dists_mat_NA),na.rm=TRUE))
-  #  min_band <- min(nearest_dists) # minimum distance so everybody has at least one neighbor
-  min_band <- median(nearest_dists)
-  band_incr <- mean(nearest_dists) # average distance to each feature's nearest neighboring feature
-  farthest_dists <- do.call(pmax,c(as.data.frame(dists_mat_NA),na.rm=TRUE)) 
-  max_band <- min(farthest_dists) # max dist so everybody still has at least one neighbor
-  
-  incr_moran <- data.frame(band=seq(from=min_band,by=band_incr,to=max_band),z=NA, MI=NA, p=NA)
-  
-  for(i in 1:nrow(incr_moran)){
-    dist_band <- incr_moran$band[i]
-    
-    # set to 1 for all points within the range (dist_band,dist_band+band_incr), and 0 for all points outside
-    s.dist <- dists_mat
-    s.dist[dists_mat<dist_band] <- 1
-    s.dist[dists_mat>dist_band] <- 0
-    # s.dist[s.dist>(dist_band+band_incr)] <- 0
-    # s.dist[s.dist>0] <- 1
-    
-    # spatial weights matrix (normalized version of s.dist)
-    w.dist <- s.dist/colSums(s.dist)
-    nonzero_neigh <- which(colSums(w.dist,na.rm=TRUE)!=0)
-    w.dist <- w.dist[nonzero_neigh,][,nonzero_neigh] # get rid of sites without neighbors in this band (is this ok?)
-    
-    # store it
-    if(length(nonzero_neigh)>0){
-      MC <- Moran.I(x=patch_locations$b_i[nonzero_neigh],weight=w.dist)
-      z <- (MC$observed-MC$expected)/MC$sd # calculate the z-score
-      incr_moran$z[i] <- z
-      incr_moran$MI[i] <- MC$observed
-      incr_moran$p[i] <- 2*pnorm(abs(z),lower.tail = FALSE)
-    } else incr_moran$MC[i] <- NA
-  }  
-  
-  h <- ggplot(incr_moran,aes(x=band,y=MI))+
-    geom_line(alpha=0.3)+
-    geom_point(aes(color=(p<0.05)),size=0.5)+
-    scale_color_manual(values=c("black","grey"),breaks=c(TRUE, FALSE))+
-    labs(x="distance band (km)",y="Moran's I",title=paste0("Incremental Spatial Autocorrelation, phi=",phi))+
-    geom_hline(yintercept=0,alpha=0.3,lty="dashed")+
-    theme_minimal()
-  print(h)
-  sp_aut_dist <- incr_moran$band[which.max(incr_moran$z)]
-  
-  return(list(patch_locations=patch_locations,sp_aut_dist=sp_aut_dist,incr_moran=incr_moran))
-}
-
-# inputs: kernel, seascape
-# output: rates of dispersal from each patch to each other patch
-# matrix Connectivity: dimensions npatch x npatch
-# Connectivity[i,j] = the proportion of dispersers from patch j that land in patch i
-f_GetConnectivityMatrix <- function(alpha, theta, patch_dists, patch_angles){
-  connectivity_matrix <- (pgamma(patch_dists+0.5,shape=alpha,scale=theta)-pgamma(patch_dists-0.5,shape=alpha,scale=theta))*patch_angles
-}
-
 # output: rates of dispersal from each patch to each other patch
 # Connectivity[i,j] = the proportion of dispersers from patch j that land in patch i
 f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angles,overlap_discount,nav_rad,numCores){
@@ -387,37 +280,17 @@ f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angle
   return(connectivity_matrix)
 }
 
-# inputs:
-#   matrices patch_dists and patch_angles
-#   vectors of patch-specific values of alpha and theta (if scalar, recycled for use across all patches)
-# output:
-#   matrix of proportion of individuals that disperse from each patch to each other patch, for the given patch-specific alphas and thetas
-f_GetConnectivityMatrix_vectorized <- function(alpha, theta, patch_dists, patch_angles,numCores) {
-  np=nrow(patch_dists)
-  if(length(alpha)==1) alpha <- rep(alpha,np)
-  if(length(theta)==1) theta <- rep(theta,np)
-  # create matrices of alpha and theta of the FROM patch
-  alpha_mat <- matrix(alpha, nrow=np, ncol=np, byrow=FALSE)
-  theta_mat <- matrix(theta, nrow=np, ncol=np, byrow=FALSE)
-  # Compute connectivity (row=FROM patch, col=TO patch)
-  connectivity_matrix <- patch_angles*(pgamma(patch_dists+0.5, shape=alpha_mat, scale=theta_mat)-
-                                         pgamma(patch_dists-0.5, shape=alpha_mat, scale=theta_mat))
-  return(connectivity_matrix)
-}
-
 ## function to run within f_RunMatrixLoop that gets the plastic connectivity matrix for a given parameter group, g, defined by its index
 f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas,nav_rad,numCores){
   v <- group_index[g,]
   # compute effective parameters for each patch with plasticity (once per group)
-  eff_params <- f_plasticityb(patch_locations$b_i, 
+  eff_params <- f_plasticityb(patch_locations$b, 
                               v_p[v$p], 
                               v$alpha, 
                               v$theta,
                               n_alpha = length(v_alphas),
                               n_theta = length(v_thetas))
   # build matrix
-  # conn_mat <- f_GetConnectivityMatrix_vectorized(v_alphas[eff_params$alpha_plastic],
-  #                                              v_thetas[eff_params$theta_plastic],patch_dists,patch_angles,numCores)
   conn_mat <- f_GetConnectivityMatrix_parallel(alpha=v_alphas[eff_params$alpha_plastic],
                                                theta=v_thetas[eff_params$theta_plastic],
                                                patch_dists=patch_dists,patch_angles=patch_angles,overlap_discount=overlap_discount,nav_rad=nav_rad,numCores=numCores)

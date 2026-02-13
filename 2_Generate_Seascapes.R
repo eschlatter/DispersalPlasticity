@@ -86,3 +86,54 @@ h=0.7 # how clumped is it? 0<h<2
 frac_map <- fracland(k=k,h=h,binary=FALSE,plotflag=FALSE)
 fn_slice_map(frac_map,quantile(frac_map,0.3),quantile(frac_map,0.7))
 
+################# all parts of seascape generating process ############################
+
+# f_GenerateBasemap
+x_dist=34000
+y_dist=34000
+units(x_dist) <- 'm'
+units(y_dist) <- 'm'
+resol=c(0.005,0.005)
+h=0.9
+prop_hab=0.2
+hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="fractal",h=0.7,prop_hab=prop_hab,make_dist_mat = TRUE)
+plot(hab_sim$base_rast)
+base_rast <- hab_sim$base_rast
+bathy_rast <- hab_sim$bathy_rast
+reef_sf <- hab_sim$reef_sf
+patch_dists <- hab_sim$patch_dists
+sfc_patches <- hab_sim$sfc_patches
+plot(base_rast)
+plot.bathy(bathy_rast)
+ggplot(reef_sf)+geom_sf()
+
+# f_GenerateHabQual
+q_range=c(2,11)
+q_autocorr=0.7
+qual_out <- f_GenerateHabQual(base_rast,q_range,q_autocorr,plot_flag=TRUE)
+qual_out$q_rast -> q_rast
+plot(q_rast)
+
+# f_GenerateK
+# use this for hab_type=grid
+K_range <- c(3,10)
+K_autocorr <- 0
+K_out <- f_GenerateK(base_rast,K_range=K_range,K_autocorr=K_autocorr,plot_flag = TRUE)
+K_rast <- K_out$K_rast
+
+# f_SimPtsOnMap
+# use this for hab_type=points
+pts_out <- f_SimPtsOnMap(reef_sf,base_rast,n_anems=50,inwater_dist=FALSE,show_map=TRUE)
+K_rast=pts_out$K_rast
+sfc_patches=pts_out$sfc_patches
+patch_dists=pts_out$patch_dists
+
+# f_MakeHabitat
+nav_rad <- 0.5
+units(nav_rad) <- 'km'
+circs=st_buffer(sfc_patches,dist=nav_rad)
+make_hab_out <- f_MakeHabitat(nav_rad=nav_rad,q_rast,K_rast,
+                              patch_dists,sfc_patches,reef_sf,overlap_method="simple")
+list2env(x=make_hab_out,envir=environment())
+
+ggplot(reef_sf)+geom_sf()+geom_sf(data=sfc_patches)+geom_sf(data=circs,alpha=0)

@@ -11,7 +11,7 @@ library(gridExtra)
 #   reef_sf: sfc_multipolygon of the reef area
 #   bathy_rast: marmap::bathy object, for getting in-water distances
 #   base_rast: SpatRaster with 0 for open water, 1 for reef
-f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),method="fractal",h=NA,prop_hab=NA,make_dist_mat=TRUE){
+f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),method="fractal",h=NA,prop_hab=NA,make_dist_mat=TRUE,plot_flag=FALSE){
   # create empty raster
   endpt_lat <- as.numeric(geosphere::destPoint(c(0,0),b=0,d=y_dist)[,'lat'])
   endpt_lon <- as.numeric(geosphere::destPoint(c(0,0),b=90,d=x_dist)[,'lon'])
@@ -48,6 +48,13 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),met
     basemap_stars <- st_as_stars(base_rast[[1]])
     basemap_contour <- st_contour(basemap_stars,breaks=c(0.5))
     reef_sf <- basemap_contour[basemap_contour$Min>0,] # pick out just the reef part for the shapefile
+  }
+  
+  if(plot_flag==TRUE){
+    g_rast <- ggplot()+ggspatial::layer_spatial(as.factor(base_rast$lyr.1))+annotation_scale()+labs(title="Base Map")+
+      scale_fill_manual(values=c("#a6cee3","#d95f02"),name=NULL,labels=c("Water","Reef"))+theme(legend.position = "bottom")
+    #g_polygon <- ggplot(reef_sf)+geom_sf(fill="#d95f02")+annotation_scale()+theme(panel.background=element_rect(fill="#a6cee3"),panel.grid = element_blank())
+    print(g_rast)
   }
   
   # create distance matrix
@@ -103,20 +110,18 @@ f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,plot_flag=FALSE){
   q_rast <- c(base_rast,empty_rast*base_rast)
   names(q_rast) <- c("reef","q")
   
-  # # put things in the right format for simulation inputs
-  # a <- subset(values(hab_rast,dataframe=TRUE),!is.na(reef))
-  # b <- crds(hab_rast,df=TRUE)
-  # reef_locations <- cbind(a,b)
-  # 
-  # if(plot_flag==TRUE){
-  #   g <- ggplot(reef_locations,aes(x=x,y=y,fill=q))+geom_tile()
-  #   print(g)
-  # }
+  if(plot_flag==TRUE){
+    q_rast_plot <- q_rast
+    q_rast_plot$q[q_rast$q==0] <- NA
+    g <- ggplot()+ggspatial::layer_spatial(q_rast_plot$q)+scale_fill_continuous(palette = 'BluGrn',name="q",na.value = "grey")+annotation_scale()+labs(title="Habitat quality by patch")
+    print(g)
+  }
+  
   
   return(list(q_rast=q_rast))
 }
 
-# Generate carrying capacity map
+# Generate carrying capacity map (for "grid" type simulation)
 # Inputs:
 #   df_patches: data frame with a row for every reef cell, and its x and y values
 #   base_rast: SpatRaster object with one layer: reef (0 for open water and 1 for reef)
@@ -144,20 +149,17 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE){
   names(K_rast) <- c("K")
   
   if(plot_flag==TRUE){
-    plot(K_rast)
+    K_rast_plot <- K_rast
+    K_rast_plot$K[K_rast$K==0] <- NA
+    g <- ggplot()+ggspatial::layer_spatial(K_rast_plot$K)+scale_fill_continuous(palette = 'RedOr',name="K",na.value = "grey")+annotation_scale()+labs(title="Carrying capacity by patch")
+    print(g)
   }
   
-  return(list(K_rast=K_rast))
+  return(list(K_rast=K_rast,hab_type="grid"))
 }
 
-# # put habitable sites into a dataframe
-# a <- values(K_rast,dataframe=TRUE) # K values
-# b <- crds(K_rast,df=TRUE) # coordinates
-# df_patches <- cbind(b,a) # put them together
-# df_patches <- subset(df_patches,K!=0) # remove open water patches
 
-
-# Generates the specified number of anemones at random locations on the map
+# Generates the specified number of anemones at random locations on the map (for "points" type simulation)
 # Calculates distance matrix between points
 # Inputs:
 #   reef_sf: sfc_multipolygon of the reef area
@@ -168,7 +170,7 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE){
 #   sfc_patches
 #   patch_dists
 #   K_rast
-f_SimPtsOnMap <- function(reef_sf,base_rast,n_anems=50,inwater_dist=FALSE,show_map=TRUE){
+f_SimPtsOnMap <- function(reef_sf,base_rast,n_anems=50,inwater_dist=FALSE,plot_flag=FALSE){
   # sample the anemones
   sfc_patches <- st_sample(reef_sf,n_anems)
   # df_patches <- data.frame(st_coordinates(sfc_patches))
@@ -184,23 +186,23 @@ f_SimPtsOnMap <- function(reef_sf,base_rast,n_anems=50,inwater_dist=FALSE,show_m
   K_rast <- base_rast
   names(K_rast) <- "K"
   
-  if(show_map==TRUE){
-    g <- ggplot(reef_sf)+geom_sf()+geom_sf(data=sfc_patches)
+  if(plot_flag==TRUE){
+    g <- ggplot(reef_sf)+geom_sf()+geom_sf(data=sfc_patches)+labs(title="Anemone locations")+theme(panel.background=element_rect(fill="lightblue"),panel.grid = element_blank())
     print(g)
   }
   
-  return(list(K_rast=K_rast,sfc_patches=sfc_patches,patch_dists=patch_dists))
+  return(list(K_rast=K_rast,sfc_patches=sfc_patches,patch_dists=patch_dists,hab_type="points"))
   
 }
 
 # nav_rad = navigation radius (in km). When hab_type="grid", should be set to 1.
-f_MakeHabitat <- function(nav_rad,q_rast,K_rast,patch_dists,sfc_patches,reef_sf,overlap_method="simple"){
+f_MakeHabitat <- function(nav_rad,q_rast,K_rast,patch_dists,sfc_patches,reef_sf,hab_type,overlap_method="simple"){
   units(nav_rad) <- 'km'
   npatch <- length(sfc_patches)
-
+  
   ## put q_rast and K_rast together
   hab_rast <- c(q_rast,K_rast)
-    
+  
   ## create df_patches (important: ID should be in the same order as in sfc_patches, or distance matrix will be wrong)
   q_vect <- terra::extract(hab_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)
   K_vect <- terra::extract(hab_rast$K,vect(sfc_patches),xy=TRUE,search_radius=500)
@@ -236,7 +238,9 @@ f_MakeHabitat <- function(nav_rad,q_rast,K_rast,patch_dists,sfc_patches,reef_sf,
               patch_dists=patch_dists,
               patch_angles=patch_angles,
               overlap_discount=overlap_discount,
-              reef_sf=reef_sf))
+              reef_sf=reef_sf,
+              hab_type=hab_type,
+              nav_rad=nav_rad))
 }
 
 # function to calculate reproductive rate (b) from habitat quality (q)
@@ -274,7 +278,9 @@ f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angle
   npatch=length(alpha)
   connectivity_matrix <- mclapply(1:npatch,function(i) cm_i <- overlap_discount[i]*patch_angles[i,]*
                                     (pgamma(patch_dists[i,]+nav_rad,shape=alpha[i],scale=theta[i])-
-                                       pgamma(pmax(patch_dists[i,]-nav_rad,0),shape=alpha[i],scale=theta[i])),
+                                       pgamma(pmax(patch_dists[i,]-nav_rad,0),shape=alpha[i],scale=theta[i])+
+                                       ifelse(nav_rad>patch_dists[i,],pgamma(nav_rad-patch_dists[i,],shape=alpha[i],scale=theta[i]),0)# when patch_dists<nav_rad, correct for it
+                                     ),
                                   mc.cores=numCores)
   connectivity_matrix <- do.call(rbind,connectivity_matrix)
   return(connectivity_matrix)

@@ -239,6 +239,7 @@ f_MakeHabitat <- function(nav_rad,q_rast,K_rast,patch_dists,sfc_patches,reef_sf,
               patch_angles=patch_angles,
               overlap_discount=overlap_discount,
               reef_sf=reef_sf,
+              sfc_patches=sfc_patches,
               hab_type=hab_type,
               nav_rad=nav_rad))
 }

@@ -4,8 +4,8 @@ source('0_Setup.R')
 ################# create a hab_params object to pass to simulation, do each of the following: ############################
 
 # 1. Generate a base map
-x_dist=34000
-y_dist=34000
+x_dist=17000
+y_dist=17000
 units(x_dist) <- 'm'
 units(y_dist) <- 'm'
 resol=c(0.005,0.005)
@@ -19,15 +19,15 @@ patch_dists <- hab_sim$patch_dists
 sfc_patches <- hab_sim$sfc_patches
 
 # 2. Create a habitat quality layer
-q_range=c(1,5)
-q_autocorr=0.9
+q_range=c(2,30)
+q_autocorr=1.1
 qual_out <- f_GenerateHabQual(base_rast,q_range,q_autocorr,plot_flag=TRUE)
 q_rast <- qual_out$q_rast
 
 # 3. Do EITHER 3a (hab_type=grid) OR 3b (hab_type=points)
 
 # 3a. Create a layer that assigns each reef grid square a carrying capacity (# of individuals it can hold)
-K_range <- c(1,3)
+K_range <- c(1,1000)
 K_autocorr <- 1.4
 K_out <- f_GenerateK(base_rast,K_range=K_range,K_autocorr=K_autocorr,plot_flag = TRUE)
 K_rast <- K_out$K_rast

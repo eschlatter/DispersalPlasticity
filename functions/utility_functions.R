@@ -101,13 +101,15 @@ f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,plot_flag=FALSE){
   k <- first(which(dimens>=max(nx,ny)))
   # generate a fractal layer
   frac_map <- fracland(k=k,h=q_autocorr,binary=FALSE,plotflag=FALSE)
-  # convert to desired range of q values
-  frac_map <- (frac_map-min(frac_map))/(max(frac_map)-min(frac_map)) # first to 0-1
-  frac_map <- frac_map*(q_range[2]-q_range[1])+q_range[1] # then to q_range
   frac_map <- frac_map[1:ny,1:nx] 
-  empty_rast <- rast(ext(base_rast), resolution=res(base_rast), crs = crs(base_rast))
-  values(empty_rast) <- frac_map
-  q_rast <- c(base_rast,empty_rast*base_rast)
+  temp_rast <- rast(ext(base_rast), resolution=res(base_rast), crs = crs(base_rast))
+  values(temp_rast) <- frac_map
+  temp_rast[base_rast==0] <- NA
+  # convert to desired range of q values
+  temp_rast <- (temp_rast-minmax(temp_rast)[1])/(minmax(temp_rast)[2]-minmax(temp_rast)[1]) # first to 0-1
+  temp_rast <- temp_rast*(q_range[2]-q_range[1])+q_range[1] # then to q_range
+  # put together with base_rast in new object
+  q_rast <- c(base_rast,temp_rast)
   names(q_rast) <- c("reef","q")
   
   if(plot_flag==TRUE){
@@ -116,7 +118,6 @@ f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,plot_flag=FALSE){
     g <- ggplot()+ggspatial::layer_spatial(q_rast_plot$q)+scale_fill_continuous(palette = 'BluGrn',name="q",na.value = "grey")+annotation_scale()+labs(title="Habitat quality by patch")
     print(g)
   }
-  
   
   return(list(q_rast=q_rast))
 }
@@ -140,12 +141,15 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE){
   # generate a fractal layer
   frac_map <- fracland(k=k,h=K_autocorr,binary=FALSE,plotflag=FALSE)
   # convert to desired range of q values
-  frac_map <- (frac_map-min(frac_map))/(max(frac_map)-min(frac_map)) # first to 0-1
-  frac_map <- frac_map*(K_range[2]-K_range[1])+K_range[1] # then to q_range
+  # frac_map <- (frac_map-min(frac_map))/(max(frac_map)-min(frac_map)) # first to 0-1
+  # frac_map <- frac_map*(K_range[2]-K_range[1])+K_range[1] # then to q_range
   frac_map <- frac_map[1:ny,1:nx] 
-  empty_rast <- rast(ext(base_rast), resolution=res(base_rast), crs = crs(base_rast))
-  values(empty_rast) <- frac_map
-  K_rast <- empty_rast*base_rast
+  K_rast <- rast(ext(base_rast), resolution=res(base_rast), crs = crs(base_rast))
+  values(K_rast) <- frac_map
+  K_rast[base_rast==0] <- NA
+  # convert to desired range of q values
+  K_rast <- (K_rast-minmax(K_rast)[1])/(minmax(K_rast)[2]-minmax(K_rast)[1]) # first to 0-1
+  K_rast <- K_rast*(K_range[2]-K_range[1])+K_range[1] # then to K_range
   names(K_rast) <- c("K")
   
   if(plot_flag==TRUE){
@@ -172,11 +176,11 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE){
 #   K_rast
 f_SimPtsOnMap <- function(reef_sf,base_rast,n_anems=50,inwater_dist=FALSE,plot_flag=FALSE){
   # sample the anemones
-  sfc_patches <- st_sample(reef_sf,n_anems)
-  # df_patches <- data.frame(st_coordinates(sfc_patches))
-  # npatch <- nrow(df_patches)
-  # df_patches$id <- 1:npatch
-  # df_patches$K <- 1
+  sfc_patches <- st_sample(reef_sf,n_anems*1.2)
+  # make sure they're all on the reef
+  on_reef <- extract(base_rast,sfc_to_df(sfc_patches)[,c("x","y")])
+  sfc_patches <- sfc_patches[on_reef$lyr.1==TRUE]
+  sfc_patches <- sfc_patches[1:min(length(sfc_patches),n_anems)]
   
   # make patch_dists
   patch_dists <- st_distance(sfc_patches)
@@ -264,12 +268,13 @@ f_plasticityb <- function(b, p, alpha, theta, n_alpha=5, n_theta=5, bmin=NULL, b
   if(is.null(bmin)) bmin=min(b)
   if(is.null(bmax)) bmax=max(b)
   # if no variation in K, no plasticity
-  if(bmin==bmax) alpha_plastic <- alpha
+  if(bmin==bmax) theta_plastic <- theta
   else {
-    alpha_add <- round(ifelse(b<bmin, p, ifelse(b>bmax, -p, p-2*p*(b-bmin)/(bmax-bmin))))
-    alpha_plastic <- oob_squish(alpha+alpha_add, c(1,n_alpha))
+    increment_add <- round(ifelse(b<bmin, p, ifelse(b>bmax, -p, p-2*p*(b-bmin)/(bmax-bmin))))
+    alpha_plastic <- oob_squish(alpha+increment_add, c(1,n_alpha))
+    theta_plastic <- oob_squish(theta+increment_add, c(1,n_theta))
   }
-  theta_plastic <- theta
+  #alpha_plastic <- alpha
   return(list(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
 }
 

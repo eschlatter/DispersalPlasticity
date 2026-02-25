@@ -212,7 +212,7 @@ f_PlotBubbleMatrix <- function(sim_melt,patch_locations,plot_int=NA){
 #   sim_melt: dataframe with columns patch, timestep, alpha, theta, p, popsize
 #   patch_locations for mapmaking
 #   plot_int: specify timesteps to plot
-f_PlotAllHeatmapsDataTable <- function(sim_melt,patch_locations,plot_int=NA,replot_data=NULL){
+f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA,replot_data=NULL,hab_type){
   if(prod(is.na(plot_int))==1){
     plot_int <- round(max(sim_melt$t_i)/10) # set the plotting interval, unless specified
     plot_ints <- seq(from=plot_int,to=max(sim_melt$t_i),by=plot_int)
@@ -224,7 +224,9 @@ f_PlotAllHeatmapsDataTable <- function(sim_melt,patch_locations,plot_int=NA,repl
     # alpha
     alpha_by_patch <- sim_melt[,.(popsize=sum(popsize)),by=c("patch","alpha_value","t_i")]
     alpha_by_patch <- alpha_by_patch[,.(alpha_m=sum(alpha_value*popsize)/sum(popsize),
-                                        alpha_v=sum(popsize*(alpha_value-(sum(alpha_value*popsize)/sum(popsize)))^2)/sum(popsize)),by=c("patch","t_i")]
+                                        alpha_v=sum(popsize*(alpha_value-
+                                                               (sum(alpha_value*popsize)/sum(popsize)))^2)/sum(popsize)),
+                                     by=c("patch","t_i")]
     alpha_by_patch <- alpha_by_patch[patch_locations,on=c(patch="id")]
     
     # theta
@@ -246,162 +248,86 @@ f_PlotAllHeatmapsDataTable <- function(sim_melt,patch_locations,plot_int=NA,repl
   else list2env(replot_data,envir=environment()) 
   
   ## make plots
-  for(t_int in plot_ints){
-    plot_alpha <- filter(alpha_by_patch,t_i==t_int) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_m))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_alpha_v <- filter(alpha_by_patch,t_i==t_int) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_v))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_theta <- filter(theta_by_patch,t_i==t_int) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_m))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_theta_v <- filter(theta_by_patch,t_i==t_int) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_v))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_p <- filter(p_by_patch,t_i==t_int) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=p_m))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_p_v <- filter(p_by_patch,t_i==t_int) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=p_v))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_abund <- filter(pop_by_patch,t_i==t_int) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=popsize))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    #grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_int))
-    grid.arrange(plot_alpha, plot_theta, plot_abund, plot_p, plot_p_v, nrow=2,top=paste0('t = ',t_int))
+  if(hab_type=="grid"){
+    for(t_int in plot_ints){
+      plot_alpha <- filter(alpha_by_patch,t_i==t_int) %>%
+        ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_m))+
+        geom_tile()+
+        labs(x='x',y='y')+
+        coord_fixed()+
+        scale_y_reverse()
+      plot_alpha_v <- filter(alpha_by_patch,t_i==t_int) %>%
+        ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_v))+
+        geom_tile()+
+        labs(x='x',y='y')+
+        coord_fixed()+
+        scale_y_reverse()
+      plot_theta <- filter(theta_by_patch,t_i==t_int) %>%
+        ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_m))+
+        geom_tile()+
+        labs(x='x',y='y')+
+        coord_fixed()+
+        scale_y_reverse()
+      plot_theta_v <- filter(theta_by_patch,t_i==t_int) %>%
+        ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_v))+
+        geom_tile()+
+        labs(x='x',y='y')+
+        coord_fixed()+
+        scale_y_reverse()
+      plot_p <- filter(p_by_patch,t_i==t_int) %>%
+        ggplot(aes(x=x-0.5,y=y-0.5,fill=p_m))+
+        geom_tile()+
+        labs(x='x',y='y')+
+        coord_fixed()+
+        scale_y_reverse()
+      plot_p_v <- filter(p_by_patch,t_i==t_int) %>%
+        ggplot(aes(x=x-0.5,y=y-0.5,fill=p_v))+
+        geom_tile()+
+        labs(x='x',y='y')+
+        coord_fixed()+
+        scale_y_reverse()
+      plot_abund <- filter(pop_by_patch,t_i==t_int) %>%
+        ggplot(aes(x=x-0.5,y=y-0.5,fill=popsize))+
+        geom_tile()+
+        labs(x='x',y='y')+
+        coord_fixed()+
+        scale_y_reverse()
+      grid.arrange(plot_alpha, plot_theta, plot_abund, plot_p, plot_p_v, nrow=2,top=paste0('t = ',t_int))
+    }
   }
-  replot_data <- list(alpha_by_patch=alpha_by_patch,theta_by_patch=theta_by_patch,p_by_patch=p_by_patch,pop_by_patch=pop_by_patch)
-  return(replot_data)
-}
-
-############## after-the-fact heatmap function for matrix model ##################
-# inputs:
-#   replot_data: if it's been done before for this sim, can reuse the processed data from last time
-#   sim_melt: dataframe with columns patch, timestep, alpha, theta, p, popsize
-#   patch_locations for mapmaking
-#   plot_int: specify timesteps to plot
-f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA,replot_data=NULL){
-  if(prod(is.na(plot_int))==1){
-    plot_int <- round(max(sim_melt$t)/10) # set the plotting interval, unless specified
-    plot_ints <- seq(from=plot_int,to=max(sim_melt$t),by=plot_int)
-  } 
-  else plot_ints <- plot_int
-  
-  if(is.null(replot_data)){
-    # process data
-    alpha_by_patch <- group_by(sim_melt,patch,alpha_value,t) %>%
-      summarize(popsize=sum(popsize),.groups='drop') %>%  # add up what's in the boxes with all values of theta and p
-      group_by(patch,t) %>%
-      summarize(alpha_m=sum(alpha_value*popsize)/sum(popsize), # at each patch, find the mean and variance of alpha values
-                alpha_v=sum(popsize*(alpha_value-alpha_m)^2)/sum(popsize),
-                .groups='drop') %>%   
-      left_join(patch_locations,by=c("patch" = "id"))
-    
-    theta_by_patch <- group_by(sim_melt,patch,theta_value,t) %>%
-      summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha and p
-      group_by(patch,t) %>%
-      summarize(theta_m=sum(theta_value*popsize)/sum(popsize),
-                theta_v=sum(popsize*(theta_value-theta_m)^2)/sum(popsize),
-                .groups='drop') %>%
-      left_join(patch_locations,by=c("patch" = "id"))
-    
-    p_by_patch <- group_by(sim_melt,patch,p_value,t) %>%
-      summarize(popsize=sum(popsize),.groups='drop') %>% # add up what's in the boxes with all values of alpha and theta
-      group_by(patch,t) %>%
-      summarize(p_m=sum(p_value*popsize)/sum(popsize),
-                p_v=sum(popsize*(p_value-p_m)^2)/sum(popsize),
-                .groups='drop') %>%
-      left_join(patch_locations,by=c("patch" = "id"))
-    
-    pop_by_patch <- group_by(sim_melt,patch,t) %>%
-      summarize(popsize=sum(popsize),.groups='drop') %>%
-      left_join(patch_locations,by=c("patch" = "id"))
-  }
-  else list2env(replot_data,envir=environment())
-  
-  ## make plots
-  for(t_i in plot_ints){
-    plot_alpha <- filter(alpha_by_patch,t==t_i) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_m))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_alpha_v <- filter(alpha_by_patch,t==t_i) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=alpha_v))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_theta <- filter(theta_by_patch,t==t_i) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_m))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_theta_v <- filter(theta_by_patch,t==t_i) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_v))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_p <- filter(p_by_patch,t==t_i) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=p_m))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_p_v <- filter(p_by_patch,t==t_i) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=p_v))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    plot_abund <- filter(pop_by_patch,t==t_i) %>%
-      ggplot(aes(x=x-0.5,y=y-0.5,fill=popsize))+
-      geom_tile()+
-      labs(x='x',y='y')+
-      coord_fixed()+
-      scale_y_reverse()
-    
-    #grid.arrange(plot_alpha, plot_alpha_v, plot_theta, plot_theta_v, plot_abund,ncol=2,top=paste0('t = ',t_i))
-    grid.arrange(plot_alpha, plot_theta, plot_abund, plot_p, plot_p_v, nrow=2,top=paste0('t = ',t_i))
-  }
+    if(hab_type=="points"){
+      for(t_int in plot_ints){
+        plot_alpha <- ggplot(reef_sf)+
+          geom_sf()+
+          geom_point(data=filter(alpha_by_patch,t_i==t_int),aes(x=x,y=y,color=alpha_m))+
+          labs(x='x',y='y')
+        plot_alpha_v <- ggplot(reef_sf)+
+          geom_sf()+
+          geom_point(data=filter(alpha_by_patch,t_i==t_int),aes(x=x,y=y,color=alpha_v))+
+          labs(x='x',y='y')
+        plot_theta <- ggplot(reef_sf)+
+          geom_sf()+
+          geom_point(data=filter(theta_by_patch,t_i==t_int),aes(x=x,y=y,color=theta_m))+
+          labs(x='x',y='y')
+        plot_theta_v <- ggplot(reef_sf)+
+          geom_sf()+
+          geom_point(data=filter(theta_by_patch,t_i==t_int),aes(x=x,y=y,color=theta_v))+
+          labs(x='x',y='y')
+        plot_p <- ggplot(reef_sf)+
+          geom_sf()+
+          geom_point(data=filter(p_by_patch,t_i==t_int),aes(x=x,y=y,color=p_m))+
+          labs(x='x',y='y')
+        plot_p_v <- ggplot(reef_sf)+
+          geom_sf()+
+          geom_point(data=filter(p_by_patch,t_i==t_int),aes(x=x,y=y,color=p_v))+
+          labs(x='x',y='y')
+        plot_abund <- ggplot(reef_sf)+
+          geom_sf()+
+          geom_point(data=filter(pop_by_patch,t_i==t_int),aes(x=x,y=y,color=popsize))+
+          labs(x='x',y='y')
+        grid.arrange(plot_alpha, plot_theta, plot_abund, plot_p, plot_p_v, nrow=2,top=paste0('t = ',t_int))
+      }
+    }
   replot_data <- list(alpha_by_patch=alpha_by_patch,theta_by_patch=theta_by_patch,p_by_patch=p_by_patch,pop_by_patch=pop_by_patch)
   return(replot_data)
 }

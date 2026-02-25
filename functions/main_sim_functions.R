@@ -67,16 +67,13 @@ f_RunSim <- function(params, hab_params, keep=list("abund","p","kern","sp_struct
   all_conn_mats <- vector("list", ngroups) # list to hold connectivity matrices, which will be computed as they're needed (will have to be reset if K_i changes)
   
   ## 5. Initialize output data structures
-  output_list=list()
-  if("abund" %in% keep){
-    output_list$df_abund = data.frame(t_i=1:nsteps,abund=NA)
-  }
-  if("p" %in% keep){
-    output_list$df_p = data.frame(t_i=1:nsteps,mean=NA,var=NA)
-  }
-  if("kern" %in% keep){
-    output_list$df_fund = data.frame(t_i=1:nsteps,kernmode_mean=NA,kernmode_var=NA,kernmean_mean=NA,kernmean_var=NA,kernmean_moran=NA)
-    output_list$df_eff = data.frame(t_i=1:nsteps,kernmode_mean=NA,kernmode_var=NA,kernmean_mean=NA,kernmean_var=NA,kernmean_moran=NA)
+  if(output_flag=="lite"){
+    # df_out = data.frame(t_i=1:nsteps,abund=NA,p_mean=NA,p_var=NA,
+    #                                  fund_kernmode_mean=NA,fund_kernmode_var=NA,
+    #                                  fund_kernmean_mean=NA,fund_kernmean_var=NA,
+    #                                  eff_kernmode_mean=NA,eff_kernmode_var=NA,
+    #                                  eff_kernmean_mean=NA,eff_kernmean_var=NA)
+    df_out <- data.frame(t_i=integer(),metric=character(),mean=numeric(),var=numeric())
   }
   
   # objects to hold param values in different ways for more efficient use later
@@ -202,75 +199,72 @@ f_RunSim <- function(params, hab_params, keep=list("abund","p","kern","sp_struct
     }
     
     ## these are for output_flag==lite. Needs work.
-    # if(sum(previous_pop)>0){
-    #   if("abund" %in% keep){
-    #     output_list$df_abund$abund[t_i] <- sum(previous_pop)
-    #   }
-    #   
-    #   if("p" %in% keep){
-    #     # mean value of p at each timestep
-    #     p_mean <- sum(p_by_group*colSums(previous_pop))/sum(previous_pop)
-    #     output_list$df_p$mean[t_i] <- p_mean
-    #     # variance of p within the population at each timestep
-    #     output_list$df_p$var[t_i] <- sum(colSums(previous_pop)*(p_by_group-p_mean)^2)/sum(previous_pop)
-    #   }
-    #   
-    #   if("kern" %in% keep){
-    #     Pij_b <- matrix(patch_locations$b,byrow=FALSE,nrow=npatch,ncol=ngroups)
-    #     Pij_eff <- f_plasticityb(Pij_b,Pij_p,Pij_alpha,Pij_theta,length(v_alphas),length(v_thetas)) # indices, not values
-    #     
-    #     ## fundamental kernel properties (i.e., based on inherited alpha and theta, but not plasticity)
-    #     ### 1. kernel mode
-    #     fund_mode_each <- ifelse(Pij_alpha_val<1,0,(Pij_alpha_val-1)*Pij_theta_val)
-    #     # mean value (over the population) of the fundamental kernel mode at each timestep
-    #     fund_mode_mean <- sum(fund_mode_each*previous_pop)/sum(previous_pop)
-    #     output_list$df_fund$kernmode_mean[t_i] <- fund_mode_mean
-    #     # variance (over the population) of the fundamental kernel mode
-    #     output_list$df_fund$kernmode_var[t_i] <- sum(previous_pop*(fund_mode_each-fund_mode_mean)^2)/sum(previous_pop)
-    #     ### 2. kernel mean
-    #     fund_mean_each <- Pij_alpha_val*Pij_theta_val
-    #     # mean value (over the population) of the fundamental kernel mean at each timestep
-    #     fund_mean_mean <- sum(fund_mean_each*previous_pop)/sum(previous_pop)
-    #     output_list$df_fund$kernmean_mean[t_i] <- fund_mean_mean
-    #     # variance (over the population) of the fundamental kernel mean
-    #     output_list$df_fund$kernmean_var[t_i] <- sum(previous_pop*(fund_mean_each-fund_mean_mean)^2)/sum(previous_pop)
-    #     
-    #     ## effective kernel properties (i.e., accounting for plasticity)
-    #     ### 1. kernel mode -- something is weird here!!
-    #     eff_mode_each <- ifelse(v_alphas[Pij_eff$alpha_plastic]<1,0,
-    #                             (v_alphas[Pij_eff$alpha_plastic]-1)*v_alphas[Pij_eff$theta_plastic])
-    #     # mean value (over the population) of the effective kernel mode at each timestep
-    #     eff_mode_mean <- sum(eff_mode_each*previous_pop)/sum(previous_pop)
-    #     output_list$df_eff$kernmode_mean[t_i] <- eff_mode_mean
-    #     # variance (over the population) of the effective kernel mode
-    #     output_list$df_eff$kernmode_var[t_i] <- sum(previous_pop*(eff_mode_each-eff_mode_mean)^2)/sum(previous_pop)
-    #     ### 2. kernel mean
-    #     eff_mean_each <- v_alphas[Pij_eff$alpha_plastic]*v_thetas[Pij_eff$theta_plastic]
-    #     # mean value (over the population) of the effective kernel mean at each timestep
-    #     eff_mean_mean <- sum(eff_mean_each*previous_pop)/sum(previous_pop)
-    #     output_list$df_eff$kernmean_mean[t_i] <- eff_mean_mean
-    #     # variance (over the population) of the effective kernel mean at each timestep
-    #     output_list$df_eff$kernmean_var[t_i] <- sum(previous_pop*(eff_mean_each-eff_mean_mean)^2)/sum(previous_pop)
-    #     
-    #     if("sp_struct" %in% keep){
-    #       # some sort of measure of the spatial autocorrelation of fundamental kernel mean
-    #       fund_mean_by_patch <- as.vector(rowSums(fund_mean_each*previous_pop))
-    #       output_list$df_fund$kernmean_moran[t_i] <- Moran.I(fund_mean_by_patch,weight=moran_weights)$observed
-    #       
-    #       # some sort of measure of the spatial autocorrelation of effective kernel mean
-    #       eff_mean_by_patch <- as.vector(rowSums(eff_mean_each*previous_pop))
-    #       output_list$df_eff$kernmean_moran[t_i] <- Moran.I(eff_mean_by_patch,weight=moran_weights)$observed
-    #       
-    #       # slope of the line relating (among patches) distance to open water and kernel mode?
-    #     }
-    #   }
-    # } # if sum(previous_pop)>0
+    if(output_flag=="lite"){
+      if(sum(previous_pop)>0){
+        df_i <- data.frame(t_i=rep(t_i,4),metric=NA,mean=NA,var=NA)
+        
+        ###### total abundance
+        #df_out$abund[t_i] <- sum(previous_pop)
+        df_i[1,] <- data.frame(t_i=t_i,metric="abund",mean=sum(previous_pop),var=NA)
+        
+        ###### p
+        # mean value of p at each timestep
+        p_mean <- sum(p_by_group*colSums(previous_pop))/sum(previous_pop)
+        p_var <- sum(colSums(previous_pop)*(p_by_group-p_mean)^2)/sum(previous_pop)
+        df_i[2,] <- data.frame(t_i=t_i,metric="p",mean=p_mean,var=p_var)
+        
+        ###### kernel properties
+        Pij_b <- matrix(patch_locations$b,byrow=FALSE,nrow=npatch,ncol=ngroups)
+        Pij_eff <- f_plasticityb(Pij_b,Pij_p,Pij_alpha,Pij_theta,length(v_alphas),length(v_thetas)) # indices, not values
+        
+        ## fundamental kernel properties (i.e., based on inherited alpha and theta, but not plasticity)
+        # 1. kernel mode
+        fund_mode_each <- ifelse(Pij_alpha_val<1,0,(Pij_alpha_val-1)*Pij_theta_val)
+        # mean and variance (over the population) of the fundamental kernel mode at each timestep
+        fund_mode_mean <- sum(fund_mode_each*previous_pop)/sum(previous_pop)
+        fund_kernmode_var <- sum(previous_pop*(fund_mode_each-fund_mode_mean)^2)/sum(previous_pop)
+        df_i[3,] <- data.frame(t_i=t_i,metric="fund_kernmode",mean=fund_mode_mean,var=fund_kernmode_var)
+        # 2. kernel mean
+        fund_mean_each <- Pij_alpha_val*Pij_theta_val
+        # mean and variance (over the population) of the fundamental kernel mean at each timestep
+        fund_mean_mean <- sum(fund_mean_each*previous_pop)/sum(previous_pop)
+        fund_kernmean_var <- sum(previous_pop*(fund_mean_each-fund_mean_mean)^2)/sum(previous_pop)
+        df_i[4,] <- data.frame(t_i=t_i,metric="fund_kernmean",mean=fund_mean_mean,var=fund_kernmean_var)
+        
+        ## effective kernel properties (i.e., accounting for plasticity)
+        #1. kernel mode -- something is weird here!!
+        eff_mode_each <- ifelse(v_alphas[Pij_eff$alpha_plastic]<1,0,
+                                (v_alphas[Pij_eff$alpha_plastic]-1)*v_alphas[Pij_eff$theta_plastic])
+        # mean and variance (over the population) of the effective kernel mode at each timestep
+        eff_mode_mean <- sum(eff_mode_each*previous_pop)/sum(previous_pop)
+        eff_mode_var <- sum(previous_pop*(eff_mode_each-eff_mode_mean)^2)/sum(previous_pop)
+        df_i[5,] <- data.frame(t_i=t_i,metric="eff_kernmode",mean=eff_mode_mean,var=eff_mode_var)
+        # 2. kernel mean
+        eff_mean_each <- v_alphas[Pij_eff$alpha_plastic]*v_thetas[Pij_eff$theta_plastic]
+        # mean and variance (over the population) of the effective kernel mean at each timestep
+        eff_mean_mean <- sum(eff_mean_each*previous_pop)/sum(previous_pop)
+        eff_mean_var <- sum(previous_pop*(eff_mean_each-eff_mean_mean)^2)/sum(previous_pop)
+        df_i[6,] <- data.frame(t_i=t_i,metric="eff_kernmean",mean=eff_mean_mean,var=eff_mean_var)
+        
+        ###### spatial structure
+        # # some sort of measure of the spatial autocorrelation of fundamental kernel mean
+        # fund_mean_by_patch <- as.vector(rowSums(fund_mean_each*previous_pop))
+        # output_list$df_fund$kernmean_moran[t_i] <- Moran.I(fund_mean_by_patch,weight=moran_weights)$observed
+        # 
+        # # some sort of measure of the spatial autocorrelation of effective kernel mean
+        # eff_mean_by_patch <- as.vector(rowSums(eff_mean_each*previous_pop))
+        # output_list$df_eff$kernmean_moran[t_i] <- Moran.I(eff_mean_by_patch,weight=moran_weights)$observed
+      
+        df_out <- rbind(df_out,df_i)
+        }
+    }
     
   } #t_i
-
+  
   time_run <- proc.time()-starttime
   output_list <- list(params=params,hab_params=hab_params,group_index=group_index,time_run=time_run)
   if(output_flag=="all") output_list <- c(output_list,list(Pij=Pij))
+  if(output_flag=="lite") output_list <- c(output_list,list(df_out=df_out))
   return(output_list)
 }
 
@@ -371,7 +365,7 @@ f_ProcessSimMelt <- function(sim_melt,patch_locations,group_index){
   n_alpha <- length(unique(group_index$alpha))
   n_theta <- length(unique(group_index$theta))
   patch_locations <- as.data.table(patch_locations)
-
+  
   # merge b and K columns into sim_melt
   sim_melt[patch_locations, on=list(patch=id), b := i.b]
   sim_melt[patch_locations, on=list(patch=id), K := i.K]
@@ -380,7 +374,7 @@ f_ProcessSimMelt <- function(sim_melt,patch_locations,group_index){
   sim_melt[, `:=`(alpha_plastic = v_alphas[f_plasticityb(b,p_value,alpha,theta,n_alpha,n_theta)$alpha_plastic],
                   theta_plastic = v_thetas[f_plasticityb(b,p_value,alpha,theta,n_alpha,n_theta)$theta_plastic])
   ]
-
+  
   # create columns for kernel mean and mode
   sim_melt[, `:=`(fund_kernmean = alpha_value*theta_value,
                   fund_kernmode = ifelse(alpha_value<1,0,(alpha_value-1)*theta_value),

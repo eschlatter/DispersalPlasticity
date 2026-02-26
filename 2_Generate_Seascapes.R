@@ -1,67 +1,70 @@
 source('0_Setup.R')
-# library(png) # don't think we need this
 
 ################# create a hab_params object to pass to simulation, do each of the following: ############################
-
 # 1. Generate a base map
-x_dist=17000
-y_dist=17000
-units(x_dist) <- 'm'
-units(y_dist) <- 'm'
-resol=c(0.005,0.005)
-h=1.1
-prop_hab=0.2
-hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="fractal",h=h,prop_hab=prop_hab,make_dist_mat = TRUE,plot_flag=TRUE)
-base_rast <- hab_sim$base_rast
-bathy_rast <- hab_sim$bathy_rast
-reef_sf <- hab_sim$reef_sf
-patch_dists <- hab_sim$patch_dists
-sfc_patches <- hab_sim$sfc_patches
+x_dist=as_units(2000,'m')
+y_dist=as_units(2000,'m')
+resol=c(0.00008,0.00008)
+base_h=1.1
+prop_hab=.1
+basemap_file="seascapes/2026_02_26/basemap_3"
+hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="fractal",h=base_h,prop_hab=prop_hab,
+                             make_dist_mat = FALSE,plot_flag=TRUE,basemap_file=basemap_file)
+reef_area <- st_area(hab_sim$reef_sf)
+units(reef_area)='km^2'
 
 # 2. Create a habitat quality layer
+qmap_file="seascapes/2026_02_26/qmap_3_1"
 q_range=c(2,30)
-q_autocorr=1.1
-qual_out <- f_GenerateHabQual(base_rast,q_range,q_autocorr,plot_flag=TRUE)
-q_rast <- qual_out$q_rast
+q_autocorr=0.8
+qual_out <- f_GenerateHabQual(base_rast=basemap_file,q_range,q_autocorr,plot_flag=TRUE,qmap_file = qmap_file)
 
 # 3. Do EITHER 3a (hab_type=grid) OR 3b (hab_type=points)
 
 # 3a. Create a layer that assigns each reef grid square a carrying capacity (# of individuals it can hold)
-K_range <- c(1,1000)
-K_autocorr <- 1.4
-K_out <- f_GenerateK(base_rast,K_range=K_range,K_autocorr=K_autocorr,plot_flag = TRUE)
-K_rast <- K_out$K_rast
-hab_type=K_out$hab_type
+popmap_file="seascapes/2026_02_26/popmap_2_1_grid"
+K_range <- c(2,10)
+K_autocorr <- 1.8
+K_out <- f_GenerateK(base_rast=basemap_file,K_range=K_range,K_autocorr=K_autocorr,
+                     plot_flag = TRUE,popmap_file = popmap_file)
 
 # 3b. Place points at random on the reef, each of which represents the habitat of a single individual
-pts_out <- f_SimPtsOnMap(reef_sf,base_rast,n_anems=200,inwater_dist=FALSE,plot_flag=TRUE)
-K_rast=pts_out$K_rast
-sfc_patches=pts_out$sfc_patches
-patch_dists=pts_out$patch_dists
-hab_type=pts_out$hab_type
+popmap_file="seascapes/2026_02_26/popmap_3_1_pt"
+n_anems=230
+inwater_dist=FALSE
+pts_out <- f_SimPtsOnMap(basemap_file = basemap_file,n_anems=n_anems,inwater_dist=inwater_dist,popmap_file=popmap_file,plot_flag=TRUE)
 
 # 4. Put everything together
-nav_rad <- 0.5
-units(nav_rad) <- 'km'
+hab_file="seascapes/2026_02_26/hab_3_1_pt"
+nav_rad <- as_units(0.5,'km')
+make_hab_out <- f_MakeHabitat(nav_rad=nav_rad,qmap_file=qmap_file,popmap_file = popmap_file,overlap_method="simple",hab_file = hab_file)
+
+
+## look at the output
+load(file=paste0(hab_file,".RData"))
+list2env(x=hab_params,envir=environment())
+hab_rast <- rast(paste0(hab_file,".tif")) # load hab_rast
+plot(hab_rast)
+
 circs=st_buffer(sfc_patches,dist=nav_rad)
-make_hab_out <- f_MakeHabitat(nav_rad=nav_rad,q_rast,K_rast,
-                              patch_dists,sfc_patches,reef_sf,hab_type,overlap_method="simple")
-list2env(x=make_hab_out,envir=environment())
+ggplot(reef_sf)+
+  geom_sf()+
+  geom_sf(data=sfc_patches)+
+  geom_sf(data=circs,alpha=0)+
+  annotation_scale()
 
+# for points-type habitat:
+ggplot()+
+  ggspatial::layer_spatial(hab_rast$q)+
+  scale_fill_continuous(palette = 'BluGrn',name="q",na.value = "grey")+
+  annotation_scale()+
+  geom_sf(data=sfc_patches,pch=21,fill='white')+
+  labs(title="Habitat quality")
 
-#save(make_hab_out,file="seascapes/hab_params_2.RData")
-
-# plot(hab_rast)
-ggplot(reef_sf)+geom_sf()+geom_sf(data=sfc_patches)+geom_sf(data=circs,alpha=0)+annotation_scale()
-
-alpha <- 0.9
-theta <- 1.5
-f_plot_gamma(1,0.9,kern_xlim = 34)
-f_GetConnectivityMatrix_parallel(rep(alpha,3),rep(theta,3),drop_units(patch_dists),drop_units(patch_angles),overlap_discount,drop_units(nav_rad),numCores=1)
 
 
 # in progress:
-#################### Create base map (to pass to the rest of the seascape-generating pipeline) ##########################
+#################### Load in base map (instead of simulating one in f_GenerateBasemap) ##########################
 # need to update this so it outputs all the necessary objects
 
 # reef_sf: Get reef shapefile(s) of field data collection area (downloaded from Allen Coral Atlas)

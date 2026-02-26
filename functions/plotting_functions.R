@@ -212,7 +212,7 @@ f_PlotBubbleMatrix <- function(sim_melt,patch_locations,plot_int=NA){
 #   sim_melt: dataframe with columns patch, timestep, alpha, theta, p, popsize
 #   patch_locations for mapmaking
 #   plot_int: specify timesteps to plot
-f_PlotAllHeatmaps <- function(sim_melt,patch_locations,plot_int=NA,replot_data=NULL,hab_type){
+f_PlotAllHeatmaps <- function(sim_melt,patch_locations,reef_sf,plot_int=NA,replot_data=NULL,hab_type){
   if(prod(is.na(plot_int))==1){
     plot_int <- round(max(sim_melt$t_i)/10) # set the plotting interval, unless specified
     plot_ints <- seq(from=plot_int,to=max(sim_melt$t_i),by=plot_int)

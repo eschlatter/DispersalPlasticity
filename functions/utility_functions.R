@@ -7,12 +7,18 @@ library(gridExtra)
 #   method: "fractal" (fractal landscape); "uniform" (all sites habitable)
 #   h: habitat aggregation value (between -2 and 2; higher = more autocorrelated)
 #   prop_hab: proportion of the map that should be habitat
+#   make_dist_mat: flag to generate distance matrix and sfc_patches here.
+#     Not necessary (and potentially slow) if the basemap will only be used for "points"-type simulations,
+#     but better to do it here if it'll be used for "patch"-type.
 # output:
 #   reef_sf: sfc_multipolygon of the reef area
 #   bathy_rast: marmap::bathy object, for getting in-water distances
 #   base_rast: SpatRaster with 0 for open water, 1 for reef
-f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),method="fractal",h=NA,prop_hab=NA,make_dist_mat=TRUE,plot_flag=FALSE){
-  # create empty raster
+f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),
+                              method="fractal",h=NA,prop_hab=NA,make_dist_mat=TRUE,
+                              plot_flag=FALSE,basemap_file=NULL){
+  
+  # create empty raster of the appropriate size
   endpt_lat <- as.numeric(geosphere::destPoint(c(0,0),b=0,d=y_dist)[,'lat'])
   endpt_lon <- as.numeric(geosphere::destPoint(c(0,0),b=90,d=x_dist)[,'lon'])
   base_rast <- rast(xmin=0,xmax=endpt_lon,ymin=0,ymax=endpt_lat,resolution=resol)
@@ -20,7 +26,7 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),met
   nx=ncol(base_rast)
   ny=nrow(base_rast)
   
-  # generate habitat configuration and add it to base_rast
+  # generate habitat configuration (reef vs open water) and add it to base_rast
   if(method=="fractal"){
     #fractal landscape
     dimens <- (2^(1:15)+1)
@@ -31,15 +37,13 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),met
     # full grid is habitable
     base_map <- matrix(1,nrow=ny,ncol=nx)
   } else stop("method incorrectly specified")
-  values(base_rast) <- base_map   # add habitat configuration to raster
+  values(base_rast) <- base_map
   
-  # create bathy_raster (for getting in-water distances)
+  # create bathy_rast (for getting in-water distances)
   bathy_rast <- marmap::as.bathy(raster(base_rast)) # this rotates it! Why???
   bathy_rast[bathy_rast==1] <- -20 # reef
   bathy_rast[bathy_rast==0] <- -100 # open water
-  # bathy_rast[bathy_rast==-1] <- 100 # land 
-  ## autoplot.bathy(bathy_rast,geom="raster")
-  
+
   # create reef_sf (for simulating point locations and plotting)
   if(method=="uniform"){
     # generate reef_sf manually
@@ -53,7 +57,6 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),met
   if(plot_flag==TRUE){
     g_rast <- ggplot()+ggspatial::layer_spatial(as.factor(base_rast$lyr.1))+annotation_scale()+labs(title="Base Map")+
       scale_fill_manual(values=c("#a6cee3","#d95f02"),name=NULL,labels=c("Water","Reef"))+theme(legend.position = "bottom")
-    #g_polygon <- ggplot(reef_sf)+geom_sf(fill="#d95f02")+annotation_scale()+theme(panel.background=element_rect(fill="#a6cee3"),panel.grid = element_blank())
     print(g_rast)
   }
   
@@ -68,11 +71,6 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),met
     sfc_patches <- st_sfc(st_patches,crs=crs(base_rast))
     sfc_patches <- st_cast(sfc_patches,'POINT')
     
-    # # also make a dataframe, so we can connect distances/angles to patches
-    # df_patches <- data.frame(st_coordinates(sfc_patches))
-    # npatch <- nrow(df_patches)
-    # df_patches$id <- 1:npatch
-    
     # make patch_dists
     patch_dists <- st_distance(sfc_patches)
     units(patch_dists) <- 'km'
@@ -81,19 +79,31 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),met
     sfc_patches=NA
   }
   
+  if(!is.null(basemap_file)){
+    save(reef_sf,patch_dists,sfc_patches,bathy_rast,file=paste0(basemap_file,".RData"))
+    writeRaster(base_rast,filename=paste0(basemap_file,".tif"),overwrite=TRUE)
+  }
+  
   return(list(base_rast=base_rast,bathy_rast=bathy_rast,reef_sf=reef_sf,
               patch_dists=patch_dists,sfc_patches=sfc_patches))
 }
 
 # Generate habitat quality map
 # Inputs:
-#   base_rast: SpatRaster with 0 for open water, 1 for reef
+#   base_rast: SpatRaster with 0 for open water, 1 for reef. Or the filepath of an existing SpatRaster.
 #   q_range: c(qmin,qmax), where q=habitat quality
 #   q_autocorr: some measure of the spatial autocorrelation in q.
 #               For the fractal landscape method, it's h in the fracland function (higher values = more autocorrelated, range=(-2,2)(technically (-infinity,2) but don't worry about it))
 # Outputs:
 #   q_rast: SpatRaster object with two layers: reef (0 for open water and 1 for reef) and q (habitat quality)
-f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,plot_flag=FALSE){
+f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,
+                              plot_flag=FALSE,qmap_file=NULL){
+  # if a filepath was specified, load the saved base map. Otherwise it's ready to go.
+  if(typeof(base_rast)=="character"){   
+    basemap_file <- base_rast
+    base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+    print(paste0("using saved base map: ",basemap_file))
+  } 
   # add habitat values on top of base map
   nx=ncol(base_rast)
   ny=nrow(base_rast)
@@ -119,6 +129,12 @@ f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,plot_flag=FALSE){
     print(g)
   }
   
+  # only save data if 1) qmap_file is given, and 2) the basemap was previously saved
+  if(!is.null(qmap_file) & exists("basemap_file")){
+    writeRaster(q_rast,filename=paste0(qmap_file,".tif"),overwrite=TRUE)
+    save(basemap_file,file=paste0(qmap_file,".RData")) # save the path to the basemap data
+  }
+  
   return(list(q_rast=q_rast))
 }
 
@@ -132,7 +148,19 @@ f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,plot_flag=FALSE){
 # Outputs:
 #   df_patches: df with columns for x, y, and K
 #   hab_rast: SpatRaster object (matching base_rast in extent and resolution) with 1 layer: K (carrying capacity)
-f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE){
+f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE,popmap_file=NULL){
+  # if a filepath was specified, load the saved base map. Otherwise it's ready to go.
+  if(typeof(base_rast)=="character"){   
+    basemap_file <- base_rast
+    base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+    print(paste0("using saved base map: ",basemap_file))
+    
+    load(paste0(basemap_file,".RData")) # load reef_sf, patch_dists, sfc_patches
+  } else {
+    reef_sf <- NULL
+    patch_dists <- NULL
+    sfc_patches <- NULL
+    }
   # add habitat values on top of base map
   nx=ncol(base_rast)
   ny=nrow(base_rast)
@@ -159,24 +187,42 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE){
     print(g)
   }
   
-  return(list(K_rast=K_rast,hab_type="grid"))
+  hab_type="grid"
+  if(!is.null(popmap_file)){
+    writeRaster(K_rast,filename=paste0(popmap_file,".tif"),overwrite=TRUE)
+    save(reef_sf,patch_dists,sfc_patches,hab_type,basemap_file,file = paste0(popmap_file,".RData"))
+  }
+  
+  return(list(K_rast=K_rast,
+              reef_sf=reef_sf,patch_dists=patch_dists,sfc_patches=sfc_patches,
+              hab_type=hab_type))
 }
 
 
 # Generates the specified number of anemones at random locations on the map (for "points" type simulation)
 # Calculates distance matrix between points
 # Inputs:
+#   basemap_file: load reef_sf and base_rast from file (this will overwrite objects specified directly)
 #   reef_sf: sfc_multipolygon of the reef area
-#   hab_rast: SpatRaster object with two layers: reef (0 for open water and 1 for reef) and q (habitat quality)
+#   base_rast: SpatRaster object with one layer: reef (0 for open water and 1 for reef)
 #   n_anems = number of anemone locations to simulate
+#   inwater_dist = whether to use in-water method to calculate distance, instead of Euclidean
 # Outputs:
-#   df_patches: dataframe with columns for id, x, y, and K (K=1 always for point version of sim)
 #   sfc_patches
 #   patch_dists
 #   K_rast
-f_SimPtsOnMap <- function(reef_sf,base_rast,n_anems=50,inwater_dist=FALSE,plot_flag=FALSE){
+f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
+                          n_anems=50,inwater_dist=FALSE,plot_flag=FALSE,popmap_file=NULL){
+  if(!is.null(basemap_file)){
+    load(paste0(basemap_file,".RData")) # load reef_sf, bathy_rast (also sfc_patches and patch_dists, but these will be overwritten)
+    base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+    print(paste0("using saved base map: ",basemap_file))
+  } else{
+    reef_sf <- NULL
+  }
+  
   # sample the anemones
-  sfc_patches <- st_sample(reef_sf,n_anems*1.2)
+  sfc_patches <- st_sample(reef_sf,size=round(n_anems*1.2))
   # make sure they're all on the reef
   on_reef <- extract(base_rast,sfc_to_df(sfc_patches)[,c("x","y")])
   sfc_patches <- sfc_patches[on_reef$lyr.1==TRUE]
@@ -195,12 +241,41 @@ f_SimPtsOnMap <- function(reef_sf,base_rast,n_anems=50,inwater_dist=FALSE,plot_f
     print(g)
   }
   
-  return(list(K_rast=K_rast,sfc_patches=sfc_patches,patch_dists=patch_dists,hab_type="points"))
+  ## output
+  hab_type="points"
+  if(!is.null(popmap_file)){
+    save(reef_sf,sfc_patches,patch_dists,hab_type,basemap_file,file=paste0(popmap_file,".RData"))
+    writeRaster(K_rast,filename=paste0(popmap_file,".tif"),overwrite=TRUE)
+  }
+  
+  return(list(K_rast=K_rast,reef_sf=reef_sf,sfc_patches=sfc_patches,patch_dists=patch_dists,hab_type=hab_type))
   
 }
 
-# nav_rad = navigation radius (in km). When hab_type="grid", should be set to 1.
-f_MakeHabitat <- function(nav_rad,q_rast,K_rast,patch_dists,sfc_patches,reef_sf,hab_type,overlap_method="simple"){
+# Inputs:
+#   nav_rad = navigation radius (in km). When hab_type="grid", should be set to 1.
+#   overlap_method: how to calculate discount for sites within nav_rad of each other.
+#     "simple" (divide by number of sites within nav_rad)
+#     or "complicated" (draw all the circles and calculate area of overlap. This is slow.)
+#   qmap_file, popmap_file: if both are given, load in from saved data.
+#   otherwise, q_rast, K_rast, patch_dists, sfc_patches, reef_sf, and hab_type must be given directly
+#   hab_file: output filepath
+# Outputs:
+#   
+f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_file=NULL,
+                          q_rast=NULL,K_rast=NULL,patch_dists=NULL,sfc_patches=NULL,reef_sf=NULL,hab_type=NULL,
+                          hab_file=NULL){
+  # load in data, if necessary
+  if(!is.null(qmap_file) & !is.null(popmap_file)){
+    load(paste0(qmap_file,".RData"))
+    q_basemap <- basemap_file
+    load(paste0(popmap_file,".RData")) # loads reef_sf,patch_dists,sfc_patches,hab_type
+    if(basemap_file==q_basemap){
+      q_rast <- rast(paste0(qmap_file,".tif")) # load q_rast
+      K_rast <- rast(paste0(popmap_file,".tif")) # load q_rast
+    } else return("error: habitat quality map and population maps are not compatible")
+  }
+  
   units(nav_rad) <- 'km'
   npatch <- length(sfc_patches)
   
@@ -236,16 +311,22 @@ f_MakeHabitat <- function(nav_rad,q_rast,K_rast,patch_dists,sfc_patches,reef_sf,
     overlap_discount <- 1/n_neighbors
   }
   
-  return(list(npatch=npatch,
-              hab_rast=hab_rast,
-              patch_locations=df_patches,
-              patch_dists=patch_dists,
-              patch_angles=patch_angles,
-              overlap_discount=overlap_discount,
-              reef_sf=reef_sf,
-              sfc_patches=sfc_patches,
-              hab_type=hab_type,
-              nav_rad=nav_rad))
+  hab_params <- list(npatch=npatch,
+                     patch_locations=df_patches,
+                     patch_dists=patch_dists,
+                     patch_angles=patch_angles,
+                     overlap_discount=overlap_discount,
+                     reef_sf=reef_sf,
+                     sfc_patches=sfc_patches,
+                     hab_type=hab_type,
+                     nav_rad=nav_rad,
+                     hab_file=hab_file)
+  
+  if(!is.null(hab_file)){
+    save(hab_params,file=paste0(hab_file,".RData"))
+    writeRaster(hab_rast,filename=paste0(hab_file,".tif"),overwrite=TRUE)
+  }
+  return(hab_params) # note that this doesn't include hab_rast, so if you want this later, you'll need to load it from hab_params$hab_file
 }
 
 # function to calculate reproductive rate (b) from habitat quality (q)
@@ -271,10 +352,10 @@ f_plasticityb <- function(b, p, alpha, theta, n_alpha=5, n_theta=5, bmin=NULL, b
   if(bmin==bmax) theta_plastic <- theta
   else {
     increment_add <- round(ifelse(b<bmin, p, ifelse(b>bmax, -p, p-2*p*(b-bmin)/(bmax-bmin))))
-    alpha_plastic <- oob_squish(alpha+increment_add, c(1,n_alpha))
+    #alpha_plastic <- oob_squish(alpha+increment_add, c(1,n_alpha))
     theta_plastic <- oob_squish(theta+increment_add, c(1,n_theta))
   }
-  #alpha_plastic <- alpha
+  alpha_plastic <- alpha
   return(list(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
 }
 

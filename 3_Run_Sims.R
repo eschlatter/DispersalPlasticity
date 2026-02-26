@@ -1,7 +1,7 @@
 source('0_Setup.R')
 
 #### Load a habitat (or skip this, and run the relevant sections of 2_Generate_Seascapes.R to make your own)
-hab_file="seascapes/2026_02_26/hab_3_1_pt"
+hab_file="seascapes/2026_02_26/hab_4_2_pt"
 load(file=paste0(hab_file,".RData"))
 hab_rast <- rast(paste0(hab_file,".tif")) # load hab_rast
 hab_params <- c(hab_params,hab_rast=hab_rast)
@@ -9,7 +9,7 @@ hab_params <- c(hab_params,hab_rast=hab_rast)
 #### Load simulation parameters (or set them below)
 
 #### Set simulation parameters (or load them above)
-nsteps <- 10000 # timesteps
+nsteps <- 1000 # timesteps
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- c(1) # values the shape parameter can take
 v_thetas <- seq(from=0.01,to=5,length.out=5) # values the scale parameter can take
@@ -26,16 +26,16 @@ params <- list(nsteps=nsteps,v_alphas=v_alphas,v_thetas=v_thetas,v_p=v_p,
 #save(params,file="seascapes/2026_02_26/params_1.RData")
 
 #### Run sim
-sim_out <- f_RunSim(params,hab_params=hab_params,output_flag="all",show_plot = FALSE)
+sim_out <- f_RunSim(params,hab_params=hab_params,output_flag="all",show_plot = FALSE,output_thin=10)
 # plotting for output_flag="all"
-sim_processed <- f_ProcessPij(sim_out$Pij,patch_locations = hab_params$patch_locations,group_index = sim_out$group_index)
+sim_processed <- f_ProcessPij(sim_out$Pij,patch_locations = hab_params$patch_locations,group_index = sim_out$group_index,output_thin=10)
 sim_melt <- sim_processed$sim_melt
 by_t <- sim_processed$by_t
-save(sim_melt,by_t,hab_file,params,file="seascapes/2026_02_26/sim_out_3.RData")
+save(sim_melt,by_t,hab_file,params,file="seascapes/2026_02_26/sim_out_4.RData")
 
-load("seascapes/2026_02_26/sim_out_2.RData")
+load("seascapes/2026_02_26/sim_out_4.RData")
 
-f_PlotAllHeatmaps(sim_melt = sim_melt,patch_locations = hab_params$patch_locations,reef_sf = hab_params$reef_sf,hab_type = hab_params$hab_type)
+a <- f_PlotAllHeatmaps(sim_melt = sim_melt,patch_locations = hab_params$patch_locations,reef_sf = hab_params$reef_sf,hab_type = hab_params$hab_type)
 ggplot(by_t,aes(x=t_i,y=p))+geom_line()
 
 # plotting for output_flag="lite"

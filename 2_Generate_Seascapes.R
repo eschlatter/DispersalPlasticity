@@ -4,19 +4,20 @@ source('0_Setup.R')
 # 1. Generate a base map
 x_dist=as_units(2000,'m')
 y_dist=as_units(2000,'m')
-resol=c(0.00008,0.00008)
+resol=c(0.0008,0.0008)
+#resol=c(0.00008,0.00008)
 base_h=1.1
-prop_hab=.1
-basemap_file="seascapes/2026_02_26/basemap_3"
-hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="fractal",h=base_h,prop_hab=prop_hab,
+prop_hab=0.2
+basemap_file="seascapes/2026_02_26/basemap_4"
+hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="uniform",h=base_h,prop_hab=prop_hab,
                              make_dist_mat = FALSE,plot_flag=TRUE,basemap_file=basemap_file)
 reef_area <- st_area(hab_sim$reef_sf)
 units(reef_area)='km^2'
 
 # 2. Create a habitat quality layer
-qmap_file="seascapes/2026_02_26/qmap_3_1"
+qmap_file="seascapes/2026_02_26/qmap_4_1"
 q_range=c(2,30)
-q_autocorr=0.8
+q_autocorr=0.2
 qual_out <- f_GenerateHabQual(base_rast=basemap_file,q_range,q_autocorr,plot_flag=TRUE,qmap_file = qmap_file)
 
 # 3. Do EITHER 3a (hab_type=grid) OR 3b (hab_type=points)
@@ -29,13 +30,14 @@ K_out <- f_GenerateK(base_rast=basemap_file,K_range=K_range,K_autocorr=K_autocor
                      plot_flag = TRUE,popmap_file = popmap_file)
 
 # 3b. Place points at random on the reef, each of which represents the habitat of a single individual
-popmap_file="seascapes/2026_02_26/popmap_3_1_pt"
-n_anems=230
+popmap_file="seascapes/2026_02_26/popmap_4_1_pt"
+#n_anems=round(drop_units(reef_area*638))
+n_anems=4*638
 inwater_dist=FALSE
 pts_out <- f_SimPtsOnMap(basemap_file = basemap_file,n_anems=n_anems,inwater_dist=inwater_dist,popmap_file=popmap_file,plot_flag=TRUE)
 
 # 4. Put everything together
-hab_file="seascapes/2026_02_26/hab_3_1_pt"
+hab_file="seascapes/2026_02_26/hab_4_1_pt"
 nav_rad <- as_units(0.5,'km')
 make_hab_out <- f_MakeHabitat(nav_rad=nav_rad,qmap_file=qmap_file,popmap_file = popmap_file,overlap_method="simple",hab_file = hab_file)
 

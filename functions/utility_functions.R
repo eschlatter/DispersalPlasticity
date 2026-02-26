@@ -37,6 +37,7 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),
     # full grid is habitable
     base_map <- matrix(1,nrow=ny,ncol=nx)
   } else stop("method incorrectly specified")
+  
   values(base_rast) <- base_map
   
   # create bathy_rast (for getting in-water distances)
@@ -48,6 +49,7 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),
   if(method=="uniform"){
     # generate reef_sf manually
     reef_sf <- st_multipolygon(x = list(list(rbind(c(0,0),c(endpt_lon,0),c(endpt_lon,endpt_lat),c(0,endpt_lat),c(0,0)))))
+    reef_sf <- st_sf(geom = st_sfc(reef_sf),crs=4326)
   } else{
     basemap_stars <- st_as_stars(base_rast[[1]])
     basemap_contour <- st_contour(basemap_stars,breaks=c(0.5))
@@ -273,7 +275,7 @@ f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_
     if(basemap_file==q_basemap){
       q_rast <- rast(paste0(qmap_file,".tif")) # load q_rast
       K_rast <- rast(paste0(popmap_file,".tif")) # load q_rast
-    } else return("error: habitat quality map and population maps are not compatible")
+    } else stop("error: habitat quality map and population maps are not compatible")
   }
   
   units(nav_rad) <- 'km'

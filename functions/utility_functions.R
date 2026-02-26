@@ -287,10 +287,13 @@ f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_
   ## create df_patches (important: ID should be in the same order as in sfc_patches, or distance matrix will be wrong)
   q_vect <- terra::extract(hab_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)
   K_vect <- terra::extract(hab_rast$K,vect(sfc_patches),xy=TRUE,search_radius=500)
-  df_patches <- q_vect
+  patch_coords <- st_coordinates(sfc_patches)
+  df_patches <- cbind(q_vect[,c("ID","q")],patch_coords)
   df_patches$K <- K_vect$K[df_patches$ID]
   df_patches$id <- df_patches$ID
-  df_patches$ID <- NULL
+  df_patches$x <- df_patches$X
+  df_patches$y <- df_patches$Y
+  df_patches <- df_patches[,c("id","x","y","q","K")]
   df_patches$b <- f_q_to_b(df_patches$q) # calculate reproductive rate (b) from habitat quality (q)
   
   ## make patch_angles

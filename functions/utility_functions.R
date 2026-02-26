@@ -227,7 +227,7 @@ f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
   sfc_patches <- st_sample(reef_sf,size=round(n_anems*1.2))
   # make sure they're all on the reef
   on_reef <- extract(base_rast,sfc_to_df(sfc_patches)[,c("x","y")])
-  sfc_patches <- sfc_patches[on_reef$lyr.1==TRUE]
+  sfc_patches <- sfc_patches[on_reef$lyr.1==1 & !is.na(on_reef$lyr.1)]
   sfc_patches <- sfc_patches[1:min(length(sfc_patches),n_anems)]
   
   # make patch_dists

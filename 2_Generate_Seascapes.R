@@ -4,41 +4,42 @@ source('0_Setup.R')
 # 1. Generate a base map
 x_dist=as_units(2000,'m')
 y_dist=as_units(2000,'m')
-resol=c(0.0008,0.0008)
+resol=c(0.0005,0.0005)
 #resol=c(0.00008,0.00008)
 base_h=1.1
 prop_hab=0.2
-basemap_file="seascapes/2026_02_26/basemap_4"
-hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="uniform",h=base_h,prop_hab=prop_hab,
-                             make_dist_mat = FALSE,plot_flag=TRUE,basemap_file=basemap_file)
+basemap_file="seascapes/2026_03_04/basemap_1"
+hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="fractal",h=base_h,prop_hab=prop_hab,
+                             make_dist_mat = TRUE,plot_flag=TRUE,basemap_file=basemap_file)
 reef_area <- st_area(hab_sim$reef_sf)
 units(reef_area)='km^2'
 
 # 2. Create a habitat quality layer
-qmap_file="seascapes/2026_02_26/qmap_4_1"
+qmap_file="seascapes/2026_03_04/kimbe_all"
 q_range=c(2,30)
-q_autocorr=0.2
+q_autocorr=0.9
 qual_out <- f_GenerateHabQual(base_rast=basemap_file,q_range,q_autocorr,plot_flag=TRUE,qmap_file = qmap_file)
 
 # 3. Do EITHER 3a (hab_type=grid) OR 3b (hab_type=points)
 
 # 3a. Create a layer that assigns each reef grid square a carrying capacity (# of individuals it can hold)
-popmap_file="seascapes/2026_02_26/popmap_2_1_grid"
-K_range <- c(2,10)
+popmap_file="seascapes/2026_03_04/popmap_1_grid"
+K_range <- c(1,1)
 K_autocorr <- 1.8
 K_out <- f_GenerateK(base_rast=basemap_file,K_range=K_range,K_autocorr=K_autocorr,
                      plot_flag = TRUE,popmap_file = popmap_file)
 
 # 3b. Place points at random on the reef, each of which represents the habitat of a single individual
-popmap_file="seascapes/2026_02_26/popmap_4_1_pt"
+popmap_file="seascapes/2026_03_04/popmap_5_pt"
 #n_anems=round(drop_units(reef_area*638))
-n_anems=4*638
+n_anems=638*4
 inwater_dist=FALSE
-pts_out <- f_SimPtsOnMap(basemap_file = basemap_file,n_anems=n_anems,inwater_dist=inwater_dist,popmap_file=popmap_file,plot_flag=TRUE)
+pts_out <- f_SimPtsOnMap(basemap_file = basemap_file,n_anems=n_anems,inwater_dist=inwater_dist,
+                         samp_type = "random",popmap_file=popmap_file,plot_flag=TRUE)
 
 # 4. Put everything together
-hab_file="seascapes/2026_02_26/hab_4_1_pt"
-nav_rad <- as_units(0.5,'km')
+hab_file="seascapes/2026_03_04/hab_7_pt"
+nav_rad <- as_units(0.05,'km')
 make_hab_out <- f_MakeHabitat(nav_rad=nav_rad,qmap_file=qmap_file,popmap_file = popmap_file,overlap_method="simple",hab_file = hab_file)
 
 
@@ -58,10 +59,10 @@ ggplot(reef_sf)+
 # for points-type habitat:
 ggplot()+
   ggspatial::layer_spatial(hab_rast$q)+
-  scale_fill_continuous(palette = 'BluGrn',name="q",na.value = "grey")+
+  scale_fill_continuous(palette = 'BluGrn',na.value = "grey")+
   annotation_scale()+
-  geom_sf(data=sfc_patches,pch=21,fill='white')+
-  labs(title="Habitat quality")
+  #geom_sf(data=sfc_patches,pch=21,fill='white',size=1)+
+  labs(fill="Habitat\nquality")
 
 
 
@@ -71,15 +72,59 @@ ggplot()+
 
 # reef_sf: Get reef shapefile(s) of field data collection area (downloaded from Allen Coral Atlas)
 sf_path <- 'seascapes/Field data/Kimbe2-20251219174118/Benthic-Map/benthic.geojson'
-#sf_path <- 'seascapes/Field data/Kimbe_large-20260114171835/Benthic-Map/benthic.geojson'
+sf_path <- 'seascapes/Field data/Kimbe_large-20260114171835/Benthic-Map/benthic.geojson'
 kimbe_reef <- read_sf(sf_path) %>%
   filter(class=="Coral/Algae")
 kimbe_reef_area <- sum(st_area(kimbe_reef))
 units(kimbe_reef_area) <- "km^2" # and convert to km^2
 
 # base_rast: make SpatRaster from sf
-er <- rast(ext(kimbe_reef), resolution=c(0.0005,0.0005), crs = crs(kimbe_reef))
-base_rast <- rasterize(vect(kimbe_reef),er)
+er <- rast(ext(kimbe_reef), resolution=c(0.0008,0.0008), crs = crs(kimbe_reef))
+
+### how to rasterize?
+
+## 1. default
+base_rast_default <- rasterize(vect(kimbe_reef),er)
+
+ggplot()+
+  ggspatial::layer_spatial(base_rast_default$layer)+
+  scale_fill_continuous(name="reef",na.value = "lightblue")+
+  annotation_scale()+
+  lims(x=c(150.06,150.1),y=c(-5.45,-5.38))+
+  labs(title=paste0("default, cells=",sum(!is.na(as.matrix(base_rast_default$layer)))))
+
+## 2. a cell is reef if the polygon touches it at all
+base_rast_touch <- rasterize(vect(kimbe_reef),er,touches=TRUE)
+
+ggplot()+
+  ggspatial::layer_spatial(base_rast_touch$layer)+
+  scale_fill_continuous(name="reef",na.value = "lightblue")+
+  annotation_scale()+
+  lims(x=c(150.06,150.1),y=c(-5.45,-5.38))+
+  labs(title=paste0("touch, cells=",sum(!is.na(as.matrix(base_rast_touch$layer)))))
+
+## 3. a cell is reef if x% of the cell is covered by reef polygon
+## with frac_inhabit=0.15, this is pretty good.
+frac_inhabit=0.15
+base_rast_frac <- rasterize(vect(kimbe_reef),er,cover=TRUE)
+base_rast_frac$layer[base_rast_frac$layer<frac_inhabit] <- NA
+base_rast_frac$layer[base_rast_frac$layer>=frac_inhabit] <- 1
+
+ggplot()+
+  ggspatial::layer_spatial(base_rast_frac$layer)+
+  scale_fill_continuous(name="reef",na.value = "lightblue")+
+  annotation_scale()+
+  lims(x=c(150.06,150.1),y=c(-5.45,-5.38))+
+  labs(title=paste0("frac=",frac_inhabit,", cells=",sum(!is.na(as.matrix(base_rast_frac$layer)))))
+
+### don't forget to do this at the end, for input into f_GenerateHabQual
+base_rast$layer[is.na(base_rast$layer)] <- 0
+
+ggplot()+
+  ggspatial::layer_spatial(base_rast$layer)+
+  scale_fill_continuous(name="reef",na.value = "lightblue")+
+  annotation_scale()+
+  lims(x=c(150.06,150.1),y=c(-5.45,-5.38))
 
 # bathy_raster: Get bathymetry for marmap
 bathy_path <- 'seascapes/Field data/Kimbe2-20251219174118/Bathymetry---composite-depth/bathymetry_0.tif'

@@ -44,7 +44,7 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),
   bathy_rast <- marmap::as.bathy(raster(base_rast)) # this rotates it! Why???
   bathy_rast[bathy_rast==1] <- -20 # reef
   bathy_rast[bathy_rast==0] <- -100 # open water
-
+  
   # create reef_sf (for simulating point locations and plotting)
   if(method=="uniform"){
     # generate reef_sf manually
@@ -127,7 +127,9 @@ f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,
   if(plot_flag==TRUE){
     q_rast_plot <- q_rast
     q_rast_plot$q[q_rast$q==0] <- NA
-    g <- ggplot()+ggspatial::layer_spatial(q_rast_plot$q)+scale_fill_continuous(palette = 'BluGrn',name="q",na.value = "grey")+annotation_scale()+labs(title="Habitat quality by patch")
+    g <- ggplot()+ggspatial::layer_spatial(q_rast_plot$q)+
+      scale_fill_continuous(palette = 'BluGrn',name="q",na.value = "grey")+
+      annotation_scale()+labs(title="Habitat quality")
     print(g)
   }
   
@@ -162,7 +164,7 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE,popmap_file
     reef_sf <- NULL
     patch_dists <- NULL
     sfc_patches <- NULL
-    }
+  }
   # add habitat values on top of base map
   nx=ncol(base_rast)
   ny=nrow(base_rast)
@@ -208,13 +210,15 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE,popmap_file
 #   reef_sf: sfc_multipolygon of the reef area
 #   base_rast: SpatRaster object with one layer: reef (0 for open water and 1 for reef)
 #   n_anems = number of anemone locations to simulate
+#   samp_type = "random","regular"
 #   inwater_dist = whether to use in-water method to calculate distance, instead of Euclidean
 # Outputs:
 #   sfc_patches
 #   patch_dists
 #   K_rast
 f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
-                          n_anems=50,inwater_dist=FALSE,plot_flag=FALSE,popmap_file=NULL){
+                          n_anems=50,samp_type="random",inwater_dist=FALSE,
+                          plot_flag=FALSE,popmap_file=NULL){
   if(!is.null(basemap_file)){
     load(paste0(basemap_file,".RData")) # load reef_sf, bathy_rast (also sfc_patches and patch_dists, but these will be overwritten)
     base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
@@ -222,9 +226,15 @@ f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
   } else{
     reef_sf <- NULL
   }
-  
   # sample the anemones
-  sfc_patches <- st_sample(reef_sf,size=round(n_anems*1.2))
+  if(samp_type=="regular"){
+    sfc_patches <- st_sample(reef_sf,size=round(n_anems),type="regular")
+    st_crs(sfc_patches) <- 4326
+  }
+  if(samp_type=="random"){
+    sfc_patches <- st_sample(reef_sf,size=round(n_anems*1.2),type="random")
+    st_crs(sfc_patches) <- 4326
+  }
   # make sure they're all on the reef
   on_reef <- extract(base_rast,sfc_to_df(sfc_patches)[,c("x","y")])
   sfc_patches <- sfc_patches[on_reef$lyr.1==1 & !is.na(on_reef$lyr.1)]
@@ -255,7 +265,7 @@ f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
 }
 
 # Inputs:
-#   nav_rad = navigation radius (in km). When hab_type="grid", should be set to 1.
+#   nav_rad = navigation radius (in km).
 #   overlap_method: how to calculate discount for sites within nav_rad of each other.
 #     "simple" (divide by number of sites within nav_rad)
 #     or "complicated" (draw all the circles and calculate area of overlap. This is slow.)
@@ -354,13 +364,17 @@ f_plasticityb <- function(b, p, alpha, theta, n_alpha=5, n_theta=5, bmin=NULL, b
   if(is.null(bmin)) bmin=min(b)
   if(is.null(bmax)) bmax=max(b)
   # if no variation in K, no plasticity
-  if(bmin==bmax) theta_plastic <- theta
+  if(bmin==bmax){
+    alpha_plastic <- alpha
+    theta_plastic <- theta
+  } 
   else {
     increment_add <- round(ifelse(b<bmin, p, ifelse(b>bmax, -p, p-2*p*(b-bmin)/(bmax-bmin))))
     #alpha_plastic <- oob_squish(alpha+increment_add, c(1,n_alpha))
     theta_plastic <- oob_squish(theta+increment_add, c(1,n_theta))
+    alpha_plastic <- alpha
+    #theta_plastic <- theta
   }
-  alpha_plastic <- alpha
   return(list(alpha_plastic=alpha_plastic,theta_plastic=theta_plastic))
 }
 
@@ -372,7 +386,7 @@ f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angle
                                     (pgamma(patch_dists[i,]+nav_rad,shape=alpha[i],scale=theta[i])-
                                        pgamma(pmax(patch_dists[i,]-nav_rad,0),shape=alpha[i],scale=theta[i])+
                                        ifelse(nav_rad>patch_dists[i,],pgamma(nav_rad-patch_dists[i,],shape=alpha[i],scale=theta[i]),0)# when patch_dists<nav_rad, correct for it
-                                     ),
+                                    ),
                                   mc.cores=numCores)
   connectivity_matrix <- do.call(rbind,connectivity_matrix)
   return(connectivity_matrix)

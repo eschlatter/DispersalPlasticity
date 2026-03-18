@@ -57,7 +57,7 @@ library(marmap)
 
 ############# Real anemone locations on restricted reef map ################
 # Get reef shapefile(s) of field data collection area (downloaded from Allen Coral Atlas)
-kimbe_reef <- read_sf('seascapes/Field data/Kimbe2-20251219174118/Benthic-Map/benthic.geojson') %>%
+kimbe_reef <- read_sf('seascapes/Field data/kimbe_zoe-20260316165625/Benthic-Map/benthic.geojson') %>%
   filter(class=="Coral/Algae")
 kimbe_reef_area <- sum(st_area(kimbe_reef))
 units(kimbe_reef_area) <- "km^2" # and convert to km^2
@@ -78,11 +78,36 @@ gps_pts <- st_as_sf(gps_pts,coords=c("Longitude","Latitude"))
 st_crs(gps_pts) <- 4326 # this looks right on the map, so I'm going with it
 
 ggplot(gps_pts)+
-  geom_contour_filled(data=marmap::as.xyz(kimbe_bathy),aes(x=V1,y=V2,z=V3),alpha=0.5)+
+  #geom_contour_filled(data=marmap::as.xyz(kimbe_bathy),aes(x=V1,y=V2,z=V3),alpha=0.5)+
   geom_sf(data=kimbe_reef,fill='black',color='black',alpha=0.2)+  
-  geom_sf(color='red',size=1)+
+  geom_sf(pch=21, fill='white',size=1)+
   annotation_scale()+
   theme_minimal()
+
+survey_area <- c(75,73,70,69,65,62,56,50,45,15,13) # picked the polygons from kimbe_reef that have anemones on them
+ggplot()+
+    geom_sf(data=kimbe_reef)+
+    geom_sf(data=kimbe_reef[survey_area,],fill='red')+
+    geom_point(data=anemone_spots_df,aes(x=Longitude,y=Latitude),size=0.5)+
+    theme_minimal()
+
+kimbe_reef_surveyed <- kimbe_reef[survey_area,]
+survey_size <- sum(st_area(kimbe_reef_surveyed))
+units(survey_size) <- 'km^2'
+anem_survey_density <- nrow(anemone_spots_df)/survey_size
+
+large_reef <- read_sf('seascapes/Field data/Kimbe_large-20260114171835/Benthic-Map/benthic.geojson') %>%
+  filter(class=="Coral/Algae")
+large_reef_area <- sum(st_area(large_reef))
+units(large_reef_area) <- "km^2" # and convert to km^2
+
+total_kimbe_anems <- anem_survey_density*large_reef_area # about 30k
+
+a <- rnorm(30000*30000) # for that many anems, a single connectivity matrix is about 7GB
+
+############# Choose reef area by depth only (5-20m) ###############
+kimbe_bathy <- rast("seascapes/Field data/Kimbe2-20251219174118/Bathymetry---composite-depth/bathymetry_0.tif") # RasterLayer
+kimbe_bathy_cut <- ifel(kimbe_bathy<=2000 & kimbe_bathy>=500, kimbe_bathy, NA)
 
 ############# Simulate anemone locations on restricted reef map ################
 # Get reef shapefile(s) of field data collection area (downloaded from Allen Coral Atlas)
@@ -94,6 +119,8 @@ units(kimbe_reef_area) <- "km^2" # and convert to km^2
 # Get bathymetry, also from Allen Coral Atlas (depth in CENTIMETERS)
 kimbe_bathy <- raster("seascapes/Field data/Kimbe2-20251219174118/Bathymetry---composite-depth/bathymetry_0.tif") # RasterLayer
 kimbe_bathy <- marmap::as.bathy(kimbe_bathy)
+
+plot.bathy(kimbe_bathy)
 
 # Place anemones randomly on reef
 anemone_spots <- st_sample(kimbe_reef,5)
@@ -185,3 +212,14 @@ ggplot(anemone_spots)+
   theme_minimal()+
   geom_sf(data=b,color="yellow")
 
+ggplot()+
+  ggspatial::layer_spatial(q_rast_plot$q)+
+  scale_fill_continuous(palette = 'BluGrn',name="habitat\nquality",na.value = "lightblue")+
+  annotation_scale()+
+  geom_sf(data=gps_pts,pch=21,size=1,fill="white")
+
+ggplot()+
+  ggspatial::layer_spatial(q_rast$reef)+
+  scale_fill_continuous(name="reef",na.value = "lightblue")+
+  annotation_scale()+
+  lims(x=c(150.06,150.1),y=c(-5.45,-5.38))

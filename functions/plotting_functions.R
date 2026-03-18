@@ -265,6 +265,7 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,reef_sf,plot_int=NA,replo
         scale_y_reverse()
       plot_theta <- filter(theta_by_patch,t_i==t_int) %>%
         ggplot(aes(x=x-0.5,y=y-0.5,fill=theta_m))+
+        scale_fill_gradient(limits=c(0,max(theta_by_patch$theta_m)),high="blue",low="white",na.value = NA)+
         geom_tile()+
         labs(x='x',y='y')+
         coord_fixed()+
@@ -277,6 +278,7 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,reef_sf,plot_int=NA,replo
         scale_y_reverse()
       plot_p <- filter(p_by_patch,t_i==t_int) %>%
         ggplot(aes(x=x-0.5,y=y-0.5,fill=p_m))+
+        scale_fill_gradient(limits=c(min(p_by_patch$p_m),max(p_by_patch$p_m)),na.value = NA)+
         geom_tile()+
         labs(x='x',y='y')+
         coord_fixed()+
@@ -293,7 +295,7 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,reef_sf,plot_int=NA,replo
         labs(x='x',y='y')+
         coord_fixed()+
         scale_y_reverse()
-      grid.arrange(plot_alpha, plot_theta, plot_abund, plot_p, plot_p_v, nrow=2,top=paste0('t = ',t_int))
+      grid.arrange(plot_theta, plot_p, nrow=2,top=paste0('t = ',t_int))
     }
   }
     if(hab_type=="points"){
@@ -309,6 +311,7 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,reef_sf,plot_int=NA,replo
         plot_theta <- ggplot(reef_sf)+
           geom_sf()+
           geom_point(data=filter(theta_by_patch,t_i==t_int),aes(x=x,y=y,color=theta_m))+
+          scale_color_gradient(limits=c(0,max(theta_by_patch$theta_m)),high="blue",low="white",na.value = NA)+
           labs(x='x',y='y')
         plot_theta_v <- ggplot(reef_sf)+
           geom_sf()+
@@ -317,6 +320,7 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,reef_sf,plot_int=NA,replo
         plot_p <- ggplot(reef_sf)+
           geom_sf()+
           geom_point(data=filter(p_by_patch,t_i==t_int),aes(x=x,y=y,color=p_m))+
+          scale_color_gradient(limits=c(min(p_by_patch$p_m),max(p_by_patch$p_m)),na.value = NA)+
           labs(x='x',y='y')
         plot_p_v <- ggplot(reef_sf)+
           geom_sf()+
@@ -326,7 +330,7 @@ f_PlotAllHeatmaps <- function(sim_melt,patch_locations,reef_sf,plot_int=NA,replo
           geom_sf()+
           geom_point(data=filter(pop_by_patch,t_i==t_int),aes(x=x,y=y,color=popsize))+
           labs(x='x',y='y')
-        grid.arrange(plot_alpha, plot_theta, plot_abund, plot_p, plot_p_v, nrow=2,top=paste0('t = ',t_int))
+        grid.arrange(plot_theta, plot_p, nrow=2,top=paste0('t = ',t_int))
       }
     }
   replot_data <- list(alpha_by_patch=alpha_by_patch,theta_by_patch=theta_by_patch,p_by_patch=p_by_patch,pop_by_patch=pop_by_patch)
@@ -723,6 +727,19 @@ f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){
     labs(title=paste('alpha =',round(alpha,3),', theta =',round(theta,3)))
   
   print(g)
+}
+
+f_plot_gammas <- function(alpha=1,thetas,kern_xlim=10){
+  ggplot()+
+    xlim(0,kern_xlim)+
+    lapply(1:length(thetas), 
+           function(i){geom_function(fun=dgamma,
+                                     args=list(shape=alpha,scale=thetas[i]),
+                                     aes(color=factor(thetas[i])),
+                                     n=5001)})+
+    theme_minimal()+
+    ylim(0,0.25)+
+    labs(x='distance (km)',y='density',color="theta",title="Dispersal Kernels")
 }
 
 f_Plot_Landscape <- function(patch_locations,do_now=TRUE){

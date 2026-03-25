@@ -2,13 +2,14 @@ source('0_Setup.R')
 
 ################# create a hab_params object to pass to simulation, do each of the following: ############################
 # 1. Generate a base map
-x_dist=50000
-y_dist=50000
-resol=c(1000,1000)
+x_dist=500000
+y_dist=500000
+resol=c(100000,100000)
 #resol=c(0.00008,0.00008)
 base_h=0.8
 prop_hab=0.2
 basemap_file="seascapes/2026_03_24/50x50km_res=1km"
+basemap_file=NULL
 hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="uniform",h=base_h,prop_hab=prop_hab,
                              make_dist_mat = TRUE,plot_flag=TRUE,basemap_file=basemap_file)
 reef_area <- st_area(hab_sim$reef_sf)

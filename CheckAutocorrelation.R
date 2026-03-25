@@ -65,10 +65,10 @@ ggplot(df_all,aes(x=q,y=range/1000,group=q))+
   labs(y="semivariogram range (km)",x="fracland parameter h")
 +
   lims(y=c(0,4))
-ggplot(df_all,aes(x=log(q),y=sill,group=q))+
+ggplot(df_all,aes(x=q,y=sill,group=q))+
   geom_boxplot()+
   labs(y="semivariogram sill",x="fracland parameter h")+
-  lims(y=c(0,4))
+  lims(y=c(0,5))
 
 
 

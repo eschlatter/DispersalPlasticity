@@ -19,15 +19,7 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(100,100),
                               plot_flag=FALSE,basemap_file=NULL){
   
   # create empty raster of the appropriate size
-  # endpt_lat <- as.numeric(geosphere::destPoint(c(0,0),b=0,d=y_dist)[,'lat'])
-  # endpt_lon <- as.numeric(geosphere::destPoint(c(0,0),b=90,d=x_dist)[,'lon'])
-  
-  ## this is good! x_dist and y_dist are in meters, resolution is in meters.
   base_rast <- rast(xmin=250000,xmax=250000+x_dist,ymin=0,ymax=y_dist,crs="EPSG:32631",resol=resol)
-  
-  
-  # base_rast <- rast(xmin=0,xmax=endpt_lon,ymin=0,ymax=endpt_lat,resolution=resol)
-  # crs(base_rast) <- "epsg:4326"
   nx=ncol(base_rast)
   ny=nrow(base_rast)
   
@@ -54,7 +46,6 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(100,100),
   if(method=="uniform"){
     # generate reef_sf manually
     reef_sf <- st_multipolygon(x = list(list(rbind(c(250000,0),c(250000+x_dist,0),c(250000+x_dist,y_dist),c(250000,y_dist),c(250000,0)))))
-#    reef_sf <- st_multipolygon(x = list(list(rbind(c(0,0),c(endpt_lon,0),c(endpt_lon,endpt_lat),c(0,endpt_lat),c(0,0)))))
     reef_sf <- st_sf(geom = st_sfc(reef_sf),crs="EPSG:32631")
   } else{
     basemap_stars <- st_as_stars(base_rast[[1]])
@@ -105,7 +96,7 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(100,100),
 #               For the fractal landscape method, it's h in the fracland function (higher values = more autocorrelated, range=(-2,2)(technically (-infinity,2) but don't worry about it))
 # Outputs:
 #   q_rast: SpatRaster object with two layers: reef (0 for open water and 1 for reef) and q (habitat quality)
-f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,binary=FALSE,
+f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,binary=FALSE,target_dist='identity',
                               plot_flag=FALSE,qmap_file=NULL){
   # if a filepath was specified, load the saved base map. Otherwise it's ready to go.
   if(typeof(base_rast)=="character"){   
@@ -113,27 +104,23 @@ f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,binary=FALSE,
     base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
     print(paste0("using saved base map: ",basemap_file))
   } 
-  # add habitat values on top of base map
   nx=ncol(base_rast)
   ny=nrow(base_rast)
-  dimens <- (2^(1:15)+1)   # find the k value to use in fracland function, given the dimensions of the base map
+  # find the k value to use in fracland function, given the dimensions of the base map
+  dimens <- (2^(1:15)+1)
   k <- first(which(dimens>=max(nx,ny)))
   # generate a fractal layer
   frac_map <- fracland(k=k,h=q_autocorr,binary=FALSE,plotflag=FALSE)
   frac_map <- frac_map[1:ny,1:nx] 
   temp_rast <- rast(ext(base_rast), resolution=res(base_rast), crs = crs(base_rast))
-  values(temp_rast) <- frac_map
+  # convert to desired distribution of q values
+  values(temp_rast) <- matrix(f_TransformDist(frac_map,target_dist),nrow=nrow(frac_map))
+  # mask out non-habitat locations
   temp_rast[base_rast==0] <- NA
-  # convert to desired range of q values
-  temp_rast <- (temp_rast-minmax(temp_rast)[1])/(minmax(temp_rast)[2]-minmax(temp_rast)[1]) # first to 0-1
-  temp_rast <- temp_rast*(q_range[2]-q_range[1])+q_range[1] # then to q_range
+
   # put together with base_rast in new object
   q_rast <- c(base_rast,temp_rast)
   names(q_rast) <- c("reef","q")
-  if(binary==TRUE){
-    q_rast$q <- ifelse(values((q_rast$q)<median(values(q_rast$q))),q_range[1],q_range[2])    
-  }
-
   
   if(plot_flag==TRUE){
     q_rast_plot <- q_rast
@@ -432,4 +419,21 @@ f_FindOverlapAreas <- function(j,circs,onecirc_area){
   
   overlap_area <- sum(all_intersects)/onecirc_area
   return(overlap_area)
+}
+
+# Function to transform distributions
+# target_dist can be A, B, C, D, E, or "identity"
+# A = uniform, B = unimodal intermediate, C = bimodal, D = unimodal small, E = unimodal large
+# all distributions have a range of about 1-9
+f_TransformDist <- function(starting_dist,target_dist){
+  if(target_dist=="identity"){
+    return(starting_dist)
+  } else{
+    load(paste0('data/target_dists/dist_',target_dist,'.RData'))
+    # cdf values of each element of the starting distribution
+    start_cdf <- as.numeric(as.factor(starting_dist))/length(starting_dist)
+    # new value is the quantile of the new distribution at the cdf value from the original
+    new_dist <- as.numeric(quantile(target_dist,start_cdf))
+    return(new_dist)
+  }
 }

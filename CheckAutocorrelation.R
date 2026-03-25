@@ -2,73 +2,68 @@ source('0_Setup.R')
 library(gstat)
 library(spdep)
 
-basemap_file="seascapes/2026_03_24/50x50km_res=1km"
-popmap_file="seascapes/2026_03_24/popmap_50x50km"
+basemap_file="seascapes/2026_03_24/50x50km_res=1km_patchy"
+popmap_file="seascapes/2026_03_24/popmap_50x50km_patchy"
 
 # method="gaussian"
 # v_qs <- 1:4
 # noise=0.01
 
-method="fractal"
-v_qs <- seq(from=0,to=1.99,length.out=6)
-
 load(paste0(popmap_file,".RData"))
 dists_mat <- drop_units(patch_dists)
 
-df_all <- data.frame(q=numeric(),range=numeric(),sill=numeric())
-for(q_i in v_qs){
-  print(q_i)
+list_dists <- c('identity','A','B','C','D','E')
+q_vec <- seq(from=0,to=1.9,length.out=6)
+
+loop_over <- q_vec
+df_all <- data.frame(loop_i=numeric(),range=numeric(),sill=numeric())
+rast_list <- list()
+
+for(loop_i in loop_over){
+  print(loop_i)
   df_q <- data.frame(st_coordinates(sfc_patches))
   npatch <- nrow(df_q)
   
   # create habitat quality layers
-  if(method=="fractal"){
-    qmap_file=NULL
-    q_range=c(1,10)
-    q_autocorr=q_i
-    for(i in 1:100){
-      q_rast <- f_GenerateHabQual(base_rast=basemap_file,q_range,q_autocorr,binary=FALSE,plot_flag=FALSE,qmap_file = qmap_file)$q_rast
-      df_q <- cbind(df_q,terra::extract(q_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)$q)
-    }
-  } else if(method=="gaussian"){
-    for(i in 1:100){
-      cov_Sigma <- exp(-q_i*dists_mat) # let covariance decay exponentially with distance
-      q_vec <- mvrnorm(n=1, mu=rep(5,times=npatch), Sigma=cov_Sigma+noise*diag(npatch))
-      df_q <- cbind(df_q,q_vec)
-      
-      ggplot(df_q,aes(x=X,y=Y))+geom_point(aes(color=q_vec))
-    }
+  qmap_file=NULL
+  q_autocorr=loop_i
+  target_dist="B"
+  for(i in 1:100){
+    q_rast <- f_GenerateHabQual(base_rast=basemap_file,q_autocorr=q_autocorr,target_dist=target_dist,plot_flag=FALSE,qmap_file = qmap_file)$q_rast
+    df_q <- cbind(df_q,terra::extract(q_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)$q)
+    rast_list[[i]] <- q_rast
   }
-  qnames <- paste0("q",1:100)
-  names(df_q) <- c("X","Y",qnames)
   
+  names(df_q) <- c("X","Y",1:100)
   
   # fit sample variograms
   for(i in 1:(length(df_q)-2)){
-    print(i)
     spdf1 <- as_Spatial(sfc_patches)
+    #spdf1$q <- bestNormalize::orderNorm(df_q[,i+2])$x.t
     spdf1$q <- df_q[,i+2]
-    vgm1 <- variogram(q~1,data=spdf1,cutoff=50000)
-    vgmf <- fit.variogram(vgm1,vgm("Gau"))
-    # g <- plot(vgm1,vgmf,main=paste(i))
-    # ggplot(df_q,aes(x=X,y=Y))+geom_point(aes(color=q2))
+    # should I use Cressie's robust estimator? Supposedly better for outliers and non-normal data
+    vgm1 <- variogram(q~1,data=spdf1)
+    # run gaussian and spherical models, and pick the better one
+    vgmf_gau <- fit.variogram(vgm1,vgm("Gau"))
+    vgmf_sph <- fit.variogram(vgm1,vgm("Sph"))
+    if(attr(vgmf_gau,'SSErr')<attr(vgmf_sph,'SSErr')){vgmf <- vgmf_gau} else vgmf <- vgmf_sph
+    # g <- plot(vgm1,vgmf,main=paste(list_dists[i]))
     # print(g)
-    df_all <- rbind(df_all,data.frame(q=q_i,range=vgmf$range[2],sill=vgmf$psill[2]))
+    df_all <- rbind(df_all,data.frame(loop_i=loop_i,range=vgmf$range[2],sill=vgmf$psill[2]))
   }
 }
 
 
 #save(df_all,file="experiments/autocorr/Experiment5.RData")
 
-ggplot(df_all,aes(x=q,y=range/1000,group=q))+
+ggplot(df_all,aes(x=loop_i,y=range/1000,group=loop_i))+
   geom_boxplot()+
-  labs(y="semivariogram range (km)",x="fracland parameter h")
-+
-  lims(y=c(0,4))
-ggplot(df_all,aes(x=log(q),y=sill,group=q))+
+  labs(y="semivariogram range (km)",x="h")+
+  lims(y=c(0,50))
+ggplot(df_all,aes(x=q,y=sill,group=q))+
   geom_boxplot()+
   labs(y="semivariogram sill",x="fracland parameter h")+
-  lims(y=c(0,4))
+  lims(y=c(0,5))
 
 
 

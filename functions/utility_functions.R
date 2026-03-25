@@ -3,7 +3,7 @@ library(gridExtra)
 # generate a simulated basemap
 # inputs:
 #   x_dist,y_dist: size of map in the x and y directions (in meters)
-#   resol: vector of resolution (in degrees) in the x and y directions
+#   resol: vector of resolution (in meters) in the x and y directions
 #   method: "fractal" (fractal landscape); "uniform" (all sites habitable)
 #   h: habitat aggregation value (between -2 and 2; higher = more autocorrelated)
 #   prop_hab: proportion of the map that should be habitat
@@ -14,15 +14,20 @@ library(gridExtra)
 #   reef_sf: sfc_multipolygon of the reef area
 #   bathy_rast: marmap::bathy object, for getting in-water distances
 #   base_rast: SpatRaster with 0 for open water, 1 for reef
-f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),
+f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(100,100),
                               method="fractal",h=NA,prop_hab=NA,make_dist_mat=TRUE,
                               plot_flag=FALSE,basemap_file=NULL){
   
   # create empty raster of the appropriate size
-  endpt_lat <- as.numeric(geosphere::destPoint(c(0,0),b=0,d=y_dist)[,'lat'])
-  endpt_lon <- as.numeric(geosphere::destPoint(c(0,0),b=90,d=x_dist)[,'lon'])
-  base_rast <- rast(xmin=0,xmax=endpt_lon,ymin=0,ymax=endpt_lat,resolution=resol)
-  crs(base_rast) <- "epsg:4326"
+  # endpt_lat <- as.numeric(geosphere::destPoint(c(0,0),b=0,d=y_dist)[,'lat'])
+  # endpt_lon <- as.numeric(geosphere::destPoint(c(0,0),b=90,d=x_dist)[,'lon'])
+  
+  ## this is good! x_dist and y_dist are in meters, resolution is in meters.
+  base_rast <- rast(xmin=250000,xmax=250000+x_dist,ymin=0,ymax=y_dist,crs="EPSG:32631",resol=resol)
+  
+  
+  # base_rast <- rast(xmin=0,xmax=endpt_lon,ymin=0,ymax=endpt_lat,resolution=resol)
+  # crs(base_rast) <- "epsg:4326"
   nx=ncol(base_rast)
   ny=nrow(base_rast)
   
@@ -48,8 +53,9 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),
   # create reef_sf (for simulating point locations and plotting)
   if(method=="uniform"){
     # generate reef_sf manually
-    reef_sf <- st_multipolygon(x = list(list(rbind(c(0,0),c(endpt_lon,0),c(endpt_lon,endpt_lat),c(0,endpt_lat),c(0,0)))))
-    reef_sf <- st_sf(geom = st_sfc(reef_sf),crs=4326)
+    reef_sf <- st_multipolygon(x = list(list(rbind(c(250000,0),c(250000+x_dist,0),c(250000+x_dist,y_dist),c(250000,y_dist),c(250000,0)))))
+#    reef_sf <- st_multipolygon(x = list(list(rbind(c(0,0),c(endpt_lon,0),c(endpt_lon,endpt_lat),c(0,endpt_lat),c(0,0)))))
+    reef_sf <- st_sf(geom = st_sfc(reef_sf),crs="EPSG:32631")
   } else{
     basemap_stars <- st_as_stars(base_rast[[1]])
     basemap_contour <- st_contour(basemap_stars,breaks=c(0.5))
@@ -74,8 +80,9 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),
     sfc_patches <- st_cast(sfc_patches,'POINT')
     
     # make patch_dists
-    patch_dists <- st_distance(sfc_patches)
-    units(patch_dists) <- 'km'
+    patch_dists <- st_distance(sfc_patches,which="Euclidean") # distances in meters
+    patch_dists <- drop_units(patch_dists/1000) # convert to km
+    units(patch_dists) <- 'km' # re-add units, because there's a bug somewhere when I convert directly
   } else {
     patch_dists=NA
     sfc_patches=NA
@@ -98,7 +105,7 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(0.00005,0.00005),
 #               For the fractal landscape method, it's h in the fracland function (higher values = more autocorrelated, range=(-2,2)(technically (-infinity,2) but don't worry about it))
 # Outputs:
 #   q_rast: SpatRaster object with two layers: reef (0 for open water and 1 for reef) and q (habitat quality)
-f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,
+f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,binary=FALSE,
                               plot_flag=FALSE,qmap_file=NULL){
   # if a filepath was specified, load the saved base map. Otherwise it's ready to go.
   if(typeof(base_rast)=="character"){   
@@ -123,6 +130,10 @@ f_GenerateHabQual <- function(base_rast,q_range,q_autocorr,
   # put together with base_rast in new object
   q_rast <- c(base_rast,temp_rast)
   names(q_rast) <- c("reef","q")
+  if(binary==TRUE){
+    q_rast$q <- ifelse(values((q_rast$q)<median(values(q_rast$q))),q_range[1],q_range[2])    
+  }
+
   
   if(plot_flag==TRUE){
     q_rast_plot <- q_rast
@@ -229,11 +240,11 @@ f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
   # sample the anemones
   if(samp_type=="regular"){
     sfc_patches <- st_sample(reef_sf,size=round(n_anems),type="regular")
-    st_crs(sfc_patches) <- 4326
+    #st_crs(sfc_patches) <- 4326
   }
   if(samp_type=="random"){
     sfc_patches <- st_sample(reef_sf,size=round(n_anems*1.2),type="random")
-    st_crs(sfc_patches) <- 4326
+    #st_crs(sfc_patches) <- 4326
   }
   # make sure they're all on the reef
   on_reef <- extract(base_rast,sfc_to_df(sfc_patches)[,c("x","y")])
@@ -242,6 +253,7 @@ f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
   
   # make patch_dists
   patch_dists <- st_distance(sfc_patches)
+  patch_dists <- drop_units(patch_dists/1000) # again, for some reason this is much faster than converting directly
   units(patch_dists) <- 'km'
   
   # K_rast is 1 everywhere

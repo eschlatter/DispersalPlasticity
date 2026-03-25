@@ -2,23 +2,23 @@ source('0_Setup.R')
 
 ################# create a hab_params object to pass to simulation, do each of the following: ############################
 # 1. Generate a base map
-x_dist=as_units(2000,'m')
-y_dist=as_units(2000,'m')
-resol=c(0.0005,0.0005)
+x_dist=50000
+y_dist=50000
+resol=c(1000,1000)
 #resol=c(0.00008,0.00008)
-base_h=1.1
+base_h=0.8
 prop_hab=0.2
-basemap_file="seascapes/2026_03_04/basemap_1"
-hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="fractal",h=base_h,prop_hab=prop_hab,
+basemap_file="seascapes/2026_03_24/50x50km_res=1km"
+hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="uniform",h=base_h,prop_hab=prop_hab,
                              make_dist_mat = TRUE,plot_flag=TRUE,basemap_file=basemap_file)
 reef_area <- st_area(hab_sim$reef_sf)
 units(reef_area)='km^2'
 
 # 2. Create a habitat quality layer
-qmap_file="seascapes/2026_03_04/kimbe_all"
+qmap_file="seascapes/2026_03_24/50x50_test"
 q_range=c(2,30)
 q_autocorr=0.9
-qual_out <- f_GenerateHabQual(base_rast=basemap_file,q_range,q_autocorr,plot_flag=TRUE,qmap_file = qmap_file)
+qual_out <- f_GenerateHabQual(base_rast=basemap_file,q_range,q_autocorr,binary=TRUE,plot_flag=TRUE,qmap_file = qmap_file)
 
 # 3. Do EITHER 3a (hab_type=grid) OR 3b (hab_type=points)
 
@@ -30,9 +30,9 @@ K_out <- f_GenerateK(base_rast=basemap_file,K_range=K_range,K_autocorr=K_autocor
                      plot_flag = TRUE,popmap_file = popmap_file)
 
 # 3b. Place points at random on the reef, each of which represents the habitat of a single individual
-popmap_file="seascapes/2026_03_04/popmap_5_pt"
+popmap_file="seascapes/2026_03_24/popmap_50x50km"
 #n_anems=round(drop_units(reef_area*638))
-n_anems=638*4
+n_anems=1000
 inwater_dist=FALSE
 pts_out <- f_SimPtsOnMap(basemap_file = basemap_file,n_anems=n_anems,inwater_dist=inwater_dist,
                          samp_type = "random",popmap_file=popmap_file,plot_flag=TRUE)

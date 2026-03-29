@@ -2,59 +2,58 @@ source('0_Setup.R')
 library(gstat)
 library(spdep)
 
-basemap_file="seascapes/2026_03_24/50x50km_res=1km_patchy"
-popmap_file="seascapes/2026_03_24/popmap_50x50km_patchy"
-
-# method="gaussian"
-# v_qs <- 1:4
-# noise=0.01
-
-load(paste0(popmap_file,".RData"))
+## load data
+basemap_file="seascapes/2026_03_27/10x10km_res=2m/"
+popmap_file="pop_1000"
+load(paste0(basemap_file,"/",popmap_file,".RData"))
 dists_mat <- drop_units(patch_dists)
 
+## params
 list_dists <- c('identity','A','B','C','D','E')
-q_vec <- seq(from=0,to=1.9,length.out=6)
-
+q_vec <- seq(from=0,to=0.4,length.out=5)
 loop_over <- q_vec
-df_all <- data.frame(loop_i=numeric(),range=numeric(),sill=numeric())
-rast_list <- list()
+target_dist="identity"
 
-for(loop_i in loop_over){
-  print(loop_i)
-  df_q <- data.frame(st_coordinates(sfc_patches))
-  npatch <- nrow(df_q)
+## data structures
+df_all <- data.frame(loop_i=numeric(),range=numeric(),sill=numeric(),model=character(),SSErr=numeric())
+
+### quick little function wrapper to make this work in parallel
+f_mc_qmaps <- function(i){
+  # generate a qmap
+  qmap_file <- paste0("set1/q=",q_autocorr,"_sim",i) # save the SpatRaster for later
+  q_rast <- f_GenerateHabQual(base_rast=basemap_file,q_autocorr=q_autocorr,target_dist=target_dist,
+                              plot_flag=TRUE,qmap_file = qmap_file)$q_rast
   
-  # create habitat quality layers
-  qmap_file=NULL
-  q_autocorr=loop_i
-  target_dist="B"
-  for(i in 1:100){
-    q_rast <- f_GenerateHabQual(base_rast=basemap_file,q_autocorr=q_autocorr,target_dist=target_dist,plot_flag=FALSE,qmap_file = qmap_file)$q_rast
-    df_q <- cbind(df_q,terra::extract(q_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)$q)
-    rast_list[[i]] <- q_rast
-  }
+  # get variogram info
+  spdf1 <- as_Spatial(sfc_patches)
+  spdf1$q <- terra::extract(q_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)$q
+  # empirical variogram
+  vgm1 <- variogram(q~1,data=spdf1,cressie=TRUE)
+  # run gaussian and spherical models, and pick the better one
+  vgmf <- fit.variogram(vgm1,vgm(c("Gau","Sph")))
   
-  names(df_q) <- c("X","Y",1:100)
-  
-  # fit sample variograms
-  for(i in 1:(length(df_q)-2)){
-    spdf1 <- as_Spatial(sfc_patches)
-    #spdf1$q <- bestNormalize::orderNorm(df_q[,i+2])$x.t
-    spdf1$q <- df_q[,i+2]
-    # should I use Cressie's robust estimator? Supposedly better for outliers and non-normal data
-    vgm1 <- variogram(q~1,data=spdf1)
-    # run gaussian and spherical models, and pick the better one
-    vgmf_gau <- fit.variogram(vgm1,vgm("Gau"))
-    vgmf_sph <- fit.variogram(vgm1,vgm("Sph"))
-    if(attr(vgmf_gau,'SSErr')<attr(vgmf_sph,'SSErr')){vgmf <- vgmf_gau} else vgmf <- vgmf_sph
-    # g <- plot(vgm1,vgmf,main=paste(list_dists[i]))
-    # print(g)
-    df_all <- rbind(df_all,data.frame(loop_i=loop_i,range=vgmf$range[2],sill=vgmf$psill[2]))
-  }
+  # store output
+  df_all <- data.frame(loop_i=loop_i,range=vgmf$range[2],sill=vgmf$psill[2],
+                       model=as.character(vgmf$model[2]),SSErr=attr(vgmf,"SSErr"))
 }
 
+### generate all the qmaps and calculate variogram range
+for(loop_i in loop_over){
+  print(loop_i)
+  q_autocorr=loop_i
 
-#save(df_all,file="experiments/autocorr/Experiment5.RData")
+  a <- mclapply(1:10, f_mc_qmaps, mc.cores = parallelly::availableCores())
+  df_loop <- do.call(rbind,a)
+  df_all <- rbind(df_all,df_loop)
+} # loop_i
+
+save(df_all,file=paste0(basemap_file,"/set1/df_all.RData"))
+
+
+### plots
+group_by(df_all,loop_i,model) %>%
+  ggplot(aes(x=factor(loop_i),y=range/1000,color=model))+
+  geom_boxplot()
 
 ggplot(df_all,aes(x=loop_i,y=range/1000,group=loop_i))+
   geom_boxplot()+
@@ -67,6 +66,17 @@ ggplot(df_all,aes(x=q,y=sill,group=q))+
 
 
 
+df_all <- df_all |>
+  rownames_to_column(var="map_id") |>
+  mutate(range_bin=cut(range,breaks=seq(from=0,to=30000,by=5000))) |>
+  mutate(range_bin_lower=as.numeric( sub("\\((.+),.*", "\\1", range_bin) ),
+         range_bin_upper=as.numeric( sub("[^,]*,([^]]*)\\]", "\\1", range_bin) )) |>
+  mutate(range_bin=cut(range,breaks=seq(from=0,to=30000,by=5000),labels=FALSE))
+table(df_all$loop_i,df_all$range_bin)
+
+rplo <- function(i){
+  plot(rast_list[[i]]$q,main=paste(i,", h=",df_all$loop_i[i]))
+}
 
 
 

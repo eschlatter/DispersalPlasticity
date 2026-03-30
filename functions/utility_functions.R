@@ -80,8 +80,9 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(100,100),
   }
   
   if(!is.null(basemap_file)){
-    save(reef_sf,patch_dists,sfc_patches,bathy_rast,file=paste0(basemap_file,".RData"))
-    writeRaster(base_rast,filename=paste0(basemap_file,".tif"),overwrite=TRUE)
+    dir.create(path=basemap_file,recursive=TRUE)
+    save(reef_sf,patch_dists,sfc_patches,bathy_rast,file=paste0(basemap_file,"/basemap.RData"))
+    writeRaster(base_rast,filename=paste0(basemap_file,"/basemap.tif"),overwrite=TRUE)
   }
   
   return(list(base_rast=base_rast,bathy_rast=bathy_rast,reef_sf=reef_sf,
@@ -103,7 +104,7 @@ f_GenerateHabQual <- function(base_rast,q_autocorr,target_dist='identity',plot_f
   # if a filepath was specified, load the saved base map. Otherwise it's ready to go.
   if(typeof(base_rast)=="character"){   
     basemap_file <- base_rast
-    base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+    base_rast <- rast(paste0(basemap_file,"/basemap.tif")) # load base_rast
     print(paste0("using saved base map: ",basemap_file))
   } 
   nx=ncol(base_rast)
@@ -121,7 +122,7 @@ f_GenerateHabQual <- function(base_rast,q_autocorr,target_dist='identity',plot_f
   values(temp_rast) <- f_TransformDist(frac_map,target_dist)
   # # mask out non-habitat locations
   # temp_rast[base_rast==0] <- NA
-
+  
   # put together with base_rast in new object
   q_rast <- c(base_rast,temp_rast)
   names(q_rast) <- c("reef","q")
@@ -137,8 +138,8 @@ f_GenerateHabQual <- function(base_rast,q_autocorr,target_dist='identity',plot_f
   
   # only save data if 1) qmap_file is given, and 2) the basemap was previously saved
   if(!is.null(qmap_file) & exists("basemap_file")){
-    writeRaster(q_rast,filename=paste0(qmap_file,".tif"),overwrite=TRUE)
-    save(basemap_file,file=paste0(qmap_file,".RData")) # save the path to the basemap data
+    writeRaster(q_rast,filename=paste0(basemap_file,"/",qmap_file,".tif"),overwrite=TRUE)
+    #save(basemap_file,file=paste0(basemap_file,"/",qmap_file,".RData")) # save the path to the basemap data
   }
   
   return(list(q_rast=q_rast))
@@ -158,10 +159,10 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE,popmap_file
   # if a filepath was specified, load the saved base map. Otherwise it's ready to go.
   if(typeof(base_rast)=="character"){   
     basemap_file <- base_rast
-    base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+    base_rast <- rast(paste0(basemap_file,"/basemap.tif")) # load base_rast
     print(paste0("using saved base map: ",basemap_file))
     
-    load(paste0(basemap_file,".RData")) # load reef_sf, patch_dists, sfc_patches
+    load(paste0(basemap_file,"/basemap.RData")) # load reef_sf, patch_dists, sfc_patches
   } else {
     reef_sf <- NULL
     patch_dists <- NULL
@@ -195,8 +196,8 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE,popmap_file
   
   hab_type="grid"
   if(!is.null(popmap_file)){
-    writeRaster(K_rast,filename=paste0(popmap_file,".tif"),overwrite=TRUE)
-    save(reef_sf,patch_dists,sfc_patches,hab_type,basemap_file,file = paste0(popmap_file,".RData"))
+    writeRaster(K_rast,filename=paste0(basemap_file,"/",popmap_file,".tif"),overwrite=TRUE)
+    save(reef_sf,patch_dists,sfc_patches,hab_type,basemap_file,file = paste0(basemap_file,"/",popmap_file,".RData"))
   }
   
   return(list(K_rast=K_rast,
@@ -222,8 +223,8 @@ f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
                           n_anems=50,samp_type="random",inwater_dist=FALSE,
                           plot_flag=FALSE,popmap_file=NULL){
   if(!is.null(basemap_file)){
-    load(paste0(basemap_file,".RData")) # load reef_sf, bathy_rast (also sfc_patches and patch_dists, but these will be overwritten)
-    base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+    load(paste0(basemap_file,"/basemap.RData")) # load reef_sf, bathy_rast (also sfc_patches and patch_dists, but these will be overwritten)
+    base_rast <- rast(paste0(basemap_file,"/basemap.tif")) # load base_rast
     print(paste0("using saved base map: ",basemap_file))
   } else{
     reef_sf <- NULL
@@ -259,8 +260,8 @@ f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
   ## output
   hab_type="points"
   if(!is.null(popmap_file)){
-    save(reef_sf,sfc_patches,patch_dists,hab_type,basemap_file,file=paste0(popmap_file,".RData"))
-    writeRaster(K_rast,filename=paste0(popmap_file,".tif"),overwrite=TRUE)
+    save(reef_sf,sfc_patches,patch_dists,hab_type,basemap_file,file=paste0(basemap_file,"/",popmap_file,".RData"))
+    writeRaster(K_rast,filename=paste0(basemap_file,"/",popmap_file,".tif"),overwrite=TRUE)
   }
   
   return(list(K_rast=K_rast,reef_sf=reef_sf,sfc_patches=sfc_patches,patch_dists=patch_dists,hab_type=hab_type))
@@ -277,18 +278,15 @@ f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
 #   hab_file: output filepath
 # Outputs:
 #   
-f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_file=NULL,
+f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_file=NULL,basemap_file=NULL,
                           q_rast=NULL,K_rast=NULL,patch_dists=NULL,sfc_patches=NULL,reef_sf=NULL,hab_type=NULL,
                           hab_file=NULL){
   # load in data, if necessary
   if(!is.null(qmap_file) & !is.null(popmap_file)){
-    load(paste0(qmap_file,".RData"))
-    q_basemap <- basemap_file
-    load(paste0(popmap_file,".RData")) # loads reef_sf,patch_dists,sfc_patches,hab_type
-    if(basemap_file==q_basemap){
-      q_rast <- rast(paste0(qmap_file,".tif")) # load q_rast
-      K_rast <- rast(paste0(popmap_file,".tif")) # load q_rast
-    } else stop("error: habitat quality map and population maps are not compatible")
+    load(paste0(basemap_file,"/",qmap_file,".RData"))
+    load(paste0(basemap_file,"/",popmap_file,".RData")) # loads reef_sf,patch_dists,sfc_patches,hab_type
+    q_rast <- rast(paste0(basemap_file,"/",qmap_file,".tif")) # load q_rast
+    K_rast <- rast(paste0(basemap_file,"/",popmap_file,".tif")) # load K_rast
   }
   
   units(nav_rad) <- 'km'
@@ -341,8 +339,8 @@ f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_
                      hab_file=hab_file)
   
   if(!is.null(hab_file)){
-    save(hab_params,file=paste0(hab_file,".RData"))
-    writeRaster(hab_rast,filename=paste0(hab_file,".tif"),overwrite=TRUE)
+    save(hab_params,file=paste0(basemap_file,"/",hab_file,".RData"))
+    writeRaster(hab_rast,filename=paste0(basemap_file,"/",hab_file,".tif"),overwrite=TRUE)
   }
   return(hab_params) # note that this doesn't include hab_rast, so if you want this later, you'll need to load it from hab_params$hab_file
 }

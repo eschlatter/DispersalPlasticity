@@ -268,6 +268,13 @@ f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
   
 }
 
+# function to use in mclapply in f_MakeHabitat
+f_get_patch_angle <- function(patch_dist){
+  patch_angle <- suppressWarnings(2*asin(nav_rad/patch_dist)/(2*pi))
+  patch_angle <- ifelse(is.nan(patch_angle),1,patch_angle)
+  return(patch_angle)
+}
+
 # Inputs:
 #   nav_rad = navigation radius (in km).
 #   overlap_method: how to calculate discount for sites within nav_rad of each other.
@@ -283,7 +290,7 @@ f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_
                           hab_file=NULL){
   # load in data, if necessary
   if(!is.null(qmap_file) & !is.null(popmap_file)){
-    load(paste0(basemap_file,"/",qmap_file,".RData"))
+    #load(paste0(basemap_file,"/",qmap_file,".RData"))
     load(paste0(basemap_file,"/",popmap_file,".RData")) # loads reef_sf,patch_dists,sfc_patches,hab_type
     q_rast <- rast(paste0(basemap_file,"/",qmap_file,".tif")) # load q_rast
     K_rast <- rast(paste0(basemap_file,"/",popmap_file,".tif")) # load K_rast
@@ -308,8 +315,18 @@ f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_
   df_patches$b <- f_q_to_b(df_patches$q) # calculate reproductive rate (b) from habitat quality (q)
   
   ## make patch_angles
-  patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists)/(2*pi))
+  # these aren't actually angles; they're the fraction of the whole circle covered by the destination patch
+  # (so values from 0 to 1, not 0 to 2pi)
+  # # original method
+  # patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists[1:100,1:100])/(2*pi))
+  # patch_angles[is.nan(patch_angles)] <- 1
+  # # parallel method
+  # patch_angles <- matrix(unlist(mclapply(patch_dists,fn_get_patch_angle,mc.cores=parallelly::availableCores())),
+  #                        nrow=nrow(patch_dists))
+  # # approximation method
+  patch_angles <- (2*nav_rad)/(2*pi*patch_dists)
   patch_angles[is.nan(patch_angles)] <- 1
+  patch_angles[drop_units(patch_angles)>1] <- 1
   
   ## make overlap_discount
   if(overlap_method=="complicated"){
@@ -350,7 +367,7 @@ f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_
 # input: vector q
 # output: vector b
 f_q_to_b <- function(q){
-  b=as.integer(q)
+  b=20*as.integer(q)
   return(b)
 }
 
@@ -429,19 +446,27 @@ f_FindOverlapAreas <- function(j,circs,onecirc_area){
 # all distributions have a range of about 1-9
 # returns an object with the same dimensions as starting_dist
 f_TransformDist <- function(starting_dist,target_dist){
-  if(target_dist=="identity"){
-    return(starting_dist)
+  # get just the non-NA cells to transform
+  good_inds <- which(!is.na(starting_dist))
+  starting_dist_use <- starting_dist[good_inds]
+  
+  # do the transformation
+  if(target_dist=="identity"){ 
+    # just converts it to the same range as everything else; doesn't change the distribution otherwise
+    new_dist_use <- (starting_dist_use-min(starting_dist_use))/(max(starting_dist_use)-min(starting_dist_use)) # first to 0-1
+    new_dist_use <- new_dist_use*(9-1)+1 # then to range 1-9
   } else{
+    # convert to new distribution
     load(paste0('data/target_dists/dist_',target_dist,'.RData'))
-    good_inds <- which(!is.na(starting_dist))
-    starting_dist_use <- starting_dist[good_inds]
     # cdf values of each element of the starting distribution
     start_cdf <- as.numeric(as.factor(starting_dist_use))/length(starting_dist_use)
     # new value is the quantile of the new distribution at the cdf value from the original
     new_dist_use <- as.numeric(quantile(target_dist,start_cdf))
-    new_dist <- rep(NA,length(starting_dist))
-    new_dist[good_inds] <- new_dist_use
-    dim(new_dist) <- dim(starting_dist)
-    return(new_dist)
   }
+  
+  # store back in object with the same dimensions and NA's as starting_dist
+  new_dist <- rep(NA,length(starting_dist))
+  new_dist[good_inds] <- new_dist_use
+  dim(new_dist) <- dim(starting_dist)
+  return(new_dist)
 }

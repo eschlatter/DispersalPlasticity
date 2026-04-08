@@ -57,13 +57,13 @@ library(marmap)
 
 ############# Real anemone locations on restricted reef map ################
 # Get reef shapefile(s) of field data collection area (downloaded from Allen Coral Atlas)
-kimbe_reef <- read_sf('seascapes/Field data/kimbe_zoe-20260316165625/Benthic-Map/benthic.geojson') %>%
+kimbe_reef <- read_sf('seascapes/Field data/Kimbe_large-20260114171835/Benthic-Map/benthic.geojson') %>%
   filter(class=="Coral/Algae")
 kimbe_reef_area <- sum(st_area(kimbe_reef))
 units(kimbe_reef_area) <- "km^2" # and convert to km^2
 
 # Get bathymetry, also from Allen Coral Atlas (depth in CENTIMETERS)
-kimbe_bathy <- raster("seascapes/Field data/Kimbe2-20251219174118/Bathymetry---composite-depth/bathymetry_0.tif") # RasterLayer
+kimbe_bathy <- raster("seascapes/Field data/Kimbe_large-20260114171835/Bathymetry---composite-depth/bathymetry_0.tif") # RasterLayer
 kimbe_bathy <- marmap::as.bathy(kimbe_bathy)
 
 # Anemone data from Zoe

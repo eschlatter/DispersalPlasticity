@@ -2,13 +2,13 @@ source('0_Setup.R')
 
 ################# create a hab_params object to pass to simulation, do each of the following: ############################
 # 1. Generate a base map
-x_dist=10000
-y_dist=10000
-resol=c(2,2)
+x_dist=5000
+y_dist=5000
+resol=c(10,10)
 #resol=c(0.00008,0.00008)
 base_h=0.8
 prop_hab=0.4
-basemap_file="seascapes/2026_03_27/10x10km_res=2m"
+basemap_file="seascapes/2026_03_30/5x5km_res=10m"
 #basemap_file=NULL
 hab_sim <- f_GenerateBasemap(x_dist=x_dist,y_dist=y_dist,resol=resol,method="uniform",h=base_h,prop_hab=prop_hab,
                              make_dist_mat = FALSE,plot_flag=TRUE,basemap_file=basemap_file)
@@ -16,9 +16,12 @@ reef_area <- st_area(hab_sim$reef_sf)
 units(reef_area)='km^2'
 
 # 2. Create a habitat quality layer
-qmap_file="q_h0_8"
-q_autocorr=0.8
+qmap_file="q0.1"
+q_autocorr=0.1
 qual_out <- f_GenerateHabQual(base_rast=basemap_file,q_autocorr=q_autocorr,target_dist="identity",plot_flag=TRUE,qmap_file = qmap_file)
+
+q_rast <- rast(paste0(basemap_file,"/",qmap_file,".tif"))
+plot(q_rast$q)
 
 # 3. Do EITHER 3a (hab_type=grid) OR 3b (hab_type=points)
 
@@ -30,18 +33,18 @@ K_out <- f_GenerateK(base_rast=basemap_file,K_range=K_range,K_autocorr=K_autocor
                      plot_flag = TRUE,popmap_file = popmap_file)
 
 # 3b. Place points at random on the reef, each of which represents the habitat of a single individual
-popmap_file="pop_1000"
+popmap_file="pop_density800"
 #n_anems=round(drop_units(reef_area*638))
-n_anems=1000
+n_anems=25*800
 inwater_dist=FALSE
 pts_out <- f_SimPtsOnMap(basemap_file = basemap_file,n_anems=n_anems,inwater_dist=inwater_dist,
                          samp_type = "random",popmap_file=popmap_file,plot_flag=TRUE)
 
 # 4. Put everything together
-hab_file="seascapes/2026_03_04/hab_7_pt"
+hab_file="hab_1"
 nav_rad <- as_units(0.05,'km')
-make_hab_out <- f_MakeHabitat(nav_rad=nav_rad,qmap_file=qmap_file,popmap_file = popmap_file,overlap_method="simple",hab_file = hab_file)
-
+make_hab_out <- f_MakeHabitat(nav_rad=nav_rad,qmap_file=qmap_file,popmap_file = popmap_file,basemap_file=basemap_file,
+                              overlap_method="simple",hab_file = hab_file)
 
 ## look at the output
 load(file=paste0(hab_file,".RData"))

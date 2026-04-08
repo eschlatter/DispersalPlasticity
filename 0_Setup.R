@@ -10,12 +10,13 @@ library(gridExtra)
 library(reshape2) # check if we need this
 library(fields)
 library(Matrix)
-library(MASS) # check if we need this
+library(MASS)
 #library(bigsparser)
 #require(rhdf5)
 library(parallel)
 library(parallelly)
-library(ape) # check if we need this
+#library(ape) # check if we need this
+library(gstat)
 library(sf)
 library(raster)
 library(stars)
@@ -24,6 +25,7 @@ library(terra)
 library(units)
 library(sfheaders)
 library(ggspatial)
+library(spdep)
 
 source('functions/main_sim_functions.R')
 source('functions/plotting_functions.R')

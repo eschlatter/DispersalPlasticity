@@ -324,6 +324,7 @@ f_ReprodDispMut <- function(g,group_index,previous_step,mutation_destinations,al
 
 ############## process Pij into a dataframe #############
 f_ProcessPij <- function(Pij,patch_locations,group_index,output_thin){
+  Pij <- Pij[,,seq(from=output_thin,to=dim(Pij)[3],by=output_thin)]
   npatch <- nrow(patch_locations)
   ngroups <- nrow(group_index)
   nsteps <- dim(Pij)[3]
@@ -331,7 +332,7 @@ f_ProcessPij <- function(Pij,patch_locations,group_index,output_thin){
   # melt into a datatable with columns patch, timestep, alpha, theta, p, popsize
   # add columns for param values at each time/patch/alpha/theta/p combo, scaled by the population size that has that combo
   sim_melt <- as.table(Pij)
-  dimnames(sim_melt) <- list(1:npatch,1:ngroups,1:nsteps)
+  dimnames(sim_melt) <- list(1:npatch,1:ngroups,output_thin*(1:nsteps))
   sim_melt <- as.data.table(sim_melt)
   setnames(sim_melt, c("patch","group","t_i","popsize"))
   

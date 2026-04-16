@@ -41,7 +41,7 @@ pts_out <- f_SimPtsOnMap(basemap_file = basemap_file,n_anems=n_anems,inwater_dis
                          samp_type = "random",popmap_file=popmap_file,plot_flag=TRUE)
 
 # 4. Put everything together
-hab_file="hab_1"
+hab_file=paste0("set2/hab_",q_autocorr,"_sim",rep_i)
 nav_rad <- as_units(0.05,'km')
 make_hab_out <- f_MakeHabitat(nav_rad=nav_rad,qmap_file=qmap_file,popmap_file = popmap_file,basemap_file=basemap_file,
                               overlap_method="simple",hab_file = hab_file)

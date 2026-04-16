@@ -26,6 +26,7 @@ library(units)
 library(sfheaders)
 library(ggspatial)
 library(spdep)
+library(fst)
 
 source('functions/main_sim_functions.R')
 source('functions/plotting_functions.R')

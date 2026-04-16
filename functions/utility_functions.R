@@ -470,3 +470,36 @@ f_TransformDist <- function(starting_dist,target_dist){
   dim(new_dist) <- dim(starting_dist)
   return(new_dist)
 }
+
+
+# Generate a habitat quality map and save it as a SpatRaster;
+#    then fit a variogram and store the output in a dataframe
+# inputs:
+#   i: replicate number. Function is meant to be used in a loop, for generating many maps
+#   seascape_file: directory to store rasters and dataframe
+#   v_width: bin width of variogram
+#   v_cutoff: cutoff of variogram
+# outputs:
+#   df_all: contains fitted variogram model info
+f_QmapFitVariogram <- function(i,sim_num,seascape_file,v_width=10,v_cutoff=5000){
+  sim_num=sim_num+i
+  # generate a qmap
+  qmap_file <- paste0(seascape_file,"/sim_",sim_num) # save the SpatRaster for later
+  print(qmap_file)
+  q_rast <- f_GenerateHabQual(base_rast=basemap_file,q_autocorr=q_autocorr,target_dist=target_dist,
+                              plot_flag=TRUE,qmap_file = qmap_file)$q_rast
+  
+  # get variogram info
+  spdf1 <- as_Spatial(sfc_patches)
+  spdf1$q <- terra::extract(q_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)$q
+  # empirical variogram
+  vgm1 <- variogram(q~1,data=spdf1,cressie=TRUE,width=v_width,cutoff=v_cutoff)
+  # run gaussian and spherical models, and pick the better one
+  vgmf <- fit.variogram(vgm1,vgm(c("Gau","Sph","Exp")))
+  
+  # store output
+  df_all <- data.frame(rep_i=i,q_autocorr=q_autocorr,target_dist=target_dist,
+             range=vgmf$range[2],sill=vgmf$psill[2],SSErr=attr(vgmf,"SSErr"),
+             model=vgmf$model[2])
+  return(df_all)
+}

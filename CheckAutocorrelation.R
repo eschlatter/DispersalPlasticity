@@ -1,25 +1,41 @@
 source('0_Setup.R')
 
 ######## Look at output from array job ##########
-basemap_file="seascapes/2026_03_30/1x25km_res=10m"
+basemap_file="seascapes/2026_03_30/5x5km_res=10m"
+popmap_file="pop_density800"
 df_all <- read.csv(paste0(basemap_file,"/set1/df_all.csv")) %>%
   filter(!is.na(range))
 
+q_autocorr=0.37
+rep_i=60
+qmap_file <- paste0("set2/q",q_autocorr,"_sim",rep_i)
+#q_rast <- rast(paste0(basemap_file,"/",qmap_file,".tif")) # load q_rast
+#plot(q_rast$q)
+
 ### plots
 group_by(df_all,q_autocorr,model) %>%
-  ggplot(aes(x=factor(q_autocorr)))+
-  geom_boxplot(aes(y=range/1000,color=model))+
-  lims(y=c(0,10))
-
+  filter(q_autocorr<0.5) %>%
+  ggplot(aes(x=q_autocorr))+
+  geom_point(aes(y=range/1000,color=model))+
+  lims(y=c(0,2))
 group_by(df_all,q_autocorr) %>%
-  ggplot(aes(x=factor(q_autocorr)))+
-  geom_boxplot(aes(y=range/1000))+
-  lims(y=c(0,5))
+  ggplot(aes(x=q_autocorr))+
+  geom_point(aes(y=range/1000,color=model))+
+  lims(y=c(0,25))
 
 table(df_all$model,df_all$q_autocorr)
 
 centers <- group_by(df_all,q_autocorr) |>
-  summarize(l40=quantile(range,0.48),u60=quantile(range,0.52),median=median(range))
+  filter(range/1000<50) |>
+  summarize(l40=quantile(range,0.45),u60=quantile(range,0.55),median=median(range))
+
+group_by(df_all,q_autocorr) %>%
+  ggplot(aes(x=factor(q_autocorr)))+
+  geom_point(aes(y=range/1000,color=model))+
+  #geom_point(data=centers,aes(x=factor(q_autocorr),y=median/1000),color='black')+
+  geom_point(data=centers,aes(x=factor(q_autocorr),y=l40/1000),color='black',alpha=0.5)+
+  geom_point(data=centers,aes(x=factor(q_autocorr),y=u60/1000),color='black',alpha=0.5)+
+  lims(y=c(0,50))
 
 df_all <- left_join(df_all,centers,by=join_by(q_autocorr))
 df_all <- mutate(df_all,in_middle=(range>l40 & range<u60))
@@ -27,13 +43,19 @@ df_all <- mutate(df_all,in_middle=(range>l40 & range<u60))
 group_by(df_all,q_autocorr) %>%
   filter(in_middle==TRUE) %>%
   ggplot(aes(x=factor(q_autocorr)))+
-  geom_boxplot(aes(y=range/1000))+
-  lims(y=c(0,5))
+  geom_point(aes(y=range/1000))+
+  ylim(0,3)
 
 df_all_mid <- filter(df_all,in_middle==TRUE) %>%
   arrange(range)
 
 par(mfrow=c(1,2))
+
+rep_i=93
+q_autocorr=0.25
+
+rep_i=99
+q_autocorr=1.55
 
 keeps_5x5 <- c(48,44,36,34,26,25,20,13,6)
 keeps_1x25 <- c()

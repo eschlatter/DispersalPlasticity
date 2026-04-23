@@ -410,6 +410,19 @@ f_GetConnectivityMatrix_parallel <- function(alpha,theta,patch_dists,patch_angle
   return(connectivity_matrix)
 }
 
+# output: rates of dispersal from each patch to each other patch
+# Connectivity[i,j] = the proportion of dispersers from patch j that land in patch i
+f_GetConnectivityMatrix <- function(alpha,theta,patch_dists,patch_angles,overlap_discount,nav_rad,numCores){
+  npatch=length(alpha)
+  connectivity_matrix <- lapply(1:npatch,function(i) cm_i <- overlap_discount[i]*patch_angles[i,]*
+                                    (pgamma(patch_dists[i,]+nav_rad,shape=alpha[i],scale=theta[i])-
+                                       pgamma(pmax(patch_dists[i,]-nav_rad,0),shape=alpha[i],scale=theta[i])+
+                                       ifelse(nav_rad>patch_dists[i,],pgamma(nav_rad-patch_dists[i,],shape=alpha[i],scale=theta[i]),0)# when patch_dists<nav_rad, correct for it
+                                    ))
+  connectivity_matrix <- do.call(rbind,connectivity_matrix)
+  return(connectivity_matrix)
+}
+
 ## function to run within f_RunMatrixLoop that gets the plastic connectivity matrix for a given parameter group, g, defined by its index
 f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas,nav_rad,numCores){
   v <- group_index[g,]

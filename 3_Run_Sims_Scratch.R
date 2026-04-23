@@ -1,9 +1,9 @@
 source('0_Setup.R')
 
 #### Load a habitat (or skip this, and run the relevant sections of 2_Generate_Seascapes.R to make your own)
-basemap_file="experiments/Exp1_20260413/basemap_1x25"
-hab_file="habfiles/hab_277_E"
-sim_file="sim_277_E"
+basemap_file="experiments/Exp1_20260413"
+hab_file="hab_test_full"
+sim_file="smalljob_local"
 
 # q_autocorr=0.37
 # rep_i=60
@@ -24,7 +24,7 @@ list2env(x=hab_params,envir=environment())
 #   annotation_scale()
 
 #### Set (or load) simulation parameters
-nsteps <- 10 # timesteps
+nsteps <- 1000 # timesteps
 # dispersal kernel is a gamma distribution, shape=alpha, scale=theta
 v_alphas <- c(1) # values the shape parameter can take
 v_thetas <- seq(from=0.25,to=4.75,by=0.5) # values the scale parameter can take
@@ -42,7 +42,7 @@ params <- list(nsteps=nsteps,v_alphas=v_alphas,v_thetas=v_thetas,v_p=v_p,
 #load("seascapes/2026_02_26/params_1.RData")
 
 #### Run sim
-f_RunSimNew(params,hab_params=hab_params,output_flag="all",show_plot = FALSE,output_thin=25,
+f_RunSimNewScratch(params,hab_params=hab_params,output_flag="all",show_plot = FALSE,output_thin=25,
             output_file=paste0(basemap_file,"/",sim_file))
 
 #### Post-processing
@@ -61,11 +61,11 @@ save(sim_melt,file=paste0(basemap_file,"/",sim_file,"_processed.RData"))
 # load(paste0(basemap_file,"/",metadata_list$hab_file,".RData")) # habitat file
 # by_t <- sim_melt$by_t
 # sim_melt <- sim_melt$sim_melt
-# # 
+# 
 # a <- f_PlotAllHeatmaps(sim_melt = sim_melt,patch_locations = hab_params$patch_locations,reef_sf = hab_params$reef_sf,hab_type = hab_params$hab_type)
 # ggplot(by_t,aes(x=t_i,y=p))+geom_line(aes(color="p"))+geom_line(aes(y=alpha*theta,color="kernmean"))
 # ggplot(by_t,aes(x=t_i))+geom_line(aes(y=theta,color="theta"))+geom_line(aes(y=alpha,color="alpha"))+geom_line(aes(y=p,color="p"))
-# ggplot(by_t,aes(x=t_i,y=popsize))+geom_line()
+# 
 # 
 # 
 

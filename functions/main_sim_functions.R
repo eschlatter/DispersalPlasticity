@@ -588,14 +588,14 @@ f_RunSimNewScratch <- function(params, hab_params, keep=list("abund","p","kern",
   }
   
   # objects to hold param values in different ways for more efficient use later
-  p_by_group <- v_p[group_index$p] # value, not index
-  alpha_by_group <- group_index$alpha # index, not value
-  theta_by_group <- group_index$theta # index, not value
-  Pij_alpha <- matrix(alpha_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # index, not value
-  Pij_theta <- matrix(theta_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # index, not value
-  Pij_alpha_val <- v_alphas[Pij_alpha]
-  Pij_theta_val <- v_thetas[Pij_theta]
-  Pij_p <- matrix(p_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # value, not index
+  # p_by_group <- v_p[group_index$p] # value, not index
+  # alpha_by_group <- group_index$alpha # index, not value
+  # theta_by_group <- group_index$theta # index, not value
+  # Pij_alpha <- matrix(alpha_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # index, not value
+  # Pij_theta <- matrix(theta_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # index, not value
+  # Pij_alpha_val <- v_alphas[Pij_alpha]
+  # Pij_theta_val <- v_thetas[Pij_theta]
+  # Pij_p <- matrix(p_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # value, not index
   
   # # generate matrix of weights (inverse distance) to use in calculating Moran's I
   # # is this an okay distance function to use? I know it matters when doing the statistical test,
@@ -645,9 +645,9 @@ f_RunSimNewScratch <- function(params, hab_params, keep=list("abund","p","kern",
       # get population of each patch for that parameter group
       patch_pops <- previous_pop[,g]
       
-      # calculate the connectivity matrix among patches, given the group parameter values and patch-level K's
+      # get the connectivity matrix among patches, given the group parameter values and patch-level q's
       # (and accounting for the patch population x per capita output b_i from each patch)
-      if(!file.exists(paste0(temp_path,"/grp_",g))){
+      if(!file.exists(paste0(temp_path,"/grp_",g,".rds"))){
         # calculate this matrix, if it hasn't been used before
         conn_mat <- f_GetPlasticConnMat(g=g, group_index=group_index, patch_locations=patch_locations,
                                         patch_dists=patch_dists, patch_angles=patch_angles,
@@ -655,16 +655,14 @@ f_RunSimNewScratch <- function(params, hab_params, keep=list("abund","p","kern",
                                         v_p=v_p, v_alphas=v_alphas, v_thetas=v_thetas,
                                         nav_rad=nav_rad, numCores=numCores)
         # then store it
-        write_fst(as.data.frame(conn_mat),paste0(temp_path,"/grp_",g),compress=50)
+        write_fst(as.data.frame(conn_mat),paste0(temp_path,"/grp_",g),compress=0)
+        #saveRDS(conn_mat,file=paste0(temp_path,"/grp_",g,".rds"),compress=FALSE)
         # otherwise, import it
-      } else conn_mat <- as.matrix(read_fst(paste0(temp_path,"/grp_",g)))
+      } else{
+        conn_mat <- as.matrix(read_fst(paste0(temp_path,"/grp_",g)))
+        #conn_mat <- readRDS(paste0(temp_path,"/grp_",g,".rds"))
+      } 
       
-      # if(is.null(all_conn_mats[[g]])) all_conn_mats[[g]] <- f_GetPlasticConnMat(g=g, group_index=group_index, patch_locations=patch_locations,
-      #                                                                           patch_dists=patch_dists, patch_angles=patch_angles,
-      #                                                                           overlap_discount=overlap_discount,
-      #                                                                           v_p=v_p, v_alphas=v_alphas, v_thetas=v_thetas,
-      #                                                                           nav_rad=nav_rad, numCores=numCores) # calculate this matrix, if it hasn't been used before
-      # conn_mat <- all_conn_mats[[g]] # otherwise, grab it from the list
       to_patch <- (1-p_penalty)*patch_locations$b*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
       
       # Divide up to_patch among parameter groups that are the result of mutation

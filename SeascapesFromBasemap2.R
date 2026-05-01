@@ -1,12 +1,12 @@
 source('0_Setup.R')
 experiment_folder <- "experiments/Exp1_20260413"
-basemap_folder <- "basemap_5x5"
+basemap_folder <- "basemap_1x25"
 seascapeset_folder <- "set1" # in case we do this for a basemap and don't like the outcome, everything's in its own folder
 
 load(file=paste0(experiment_folder,"/",basemap_folder,"/pop_density800.RData")) 
 
 v_width <- 10
-v_cutoff <- 5000
+v_cutoff <- 15000
 
 # From a basemap:
 # Decide what autocorr ranges you'd like to have.
@@ -17,10 +17,6 @@ v_cutoff <- 5000
 
 v_ranges <- c(18,64,223,780,2700) # vector of the target scales of spatial autocorrelation (range of semivariogram)
 v_h <- seq(from=-1,to=1.98,by=0.05)
-# done_ones <- filter(df_dists,rep_i==1)$simID
-# still_need <- (1:60)[(1:60) %notin% done_ones]
-# still_need <- c(8, 12, 13, 15, 17, 18, 19, 20, 22, 23, 24, 25, 27, 28, 29, 30, 33, 34,
-#                 35, 38, 39, 40, 42, 45, 47, 49, 50, 52, 54, 55, 57, 59, 60)
 
 # # ## index of sims
 # index_runs <- expand.grid(h=v_h,rep_i=1:100) %>%
@@ -28,13 +24,6 @@ v_h <- seq(from=-1,to=1.98,by=0.05)
 #   mutate(simID=as.integer(simID)) %>%
 #   mutate(target_dist="identity")
 # write.csv(x = index_runs,file = paste0(experiment_folder,"/",basemap_folder,"/",seascapeset_folder,"/index_runs.csv"),row.names = FALSE)
-
-# ## file to hold info on each sim (just create header row, and append rows as we go)
-# df_dists <- data.frame(simID=numeric(),
-#                        range=numeric(),sill=numeric(),SSErr=numeric(),
-#                        model=factor())
-# write.table(df_dists, file = paste0(experiment_folder,"/",basemap_folder,"/",seascapeset_folder,"/df_dists.csv"), sep = ",", append = FALSE,
-#             quote = FALSE, col.names = TRUE, row.names = FALSE)
 
 ######### Do this part with a separate slurm task for each value of h ##############
 

@@ -1,7 +1,7 @@
 ######## Generate the hab_params needed for sims ###########
 source('0_Setup.R')
 experiment_folder <- "experiments/Exp1_20260413"
-basemap_folder <- "basemap_1x25"
+basemap_folder <- "basemap_5x5"
 seascapeset_folder <- "set1"
 popmap_file <- "pop_density800"
 nav_rad <- as_units(0.05,'km')

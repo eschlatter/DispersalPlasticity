@@ -16,7 +16,7 @@ library(gridExtra)
 #   base_rast: SpatRaster with 0 for open water, 1 for reef
 f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(100,100),
                               method="fractal",h=NA,prop_hab=NA,make_dist_mat=TRUE,
-                              plot_flag=FALSE,basemap_file=NULL){
+                              plot_flag=FALSE,experiment_folder=NULL,basemap_id=NULL){
   
   # create empty raster of the appropriate size
   base_rast <- rast(xmin=250000,xmax=250000+x_dist,ymin=0,ymax=y_dist,crs="EPSG:32631",resol=resol)
@@ -79,10 +79,10 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(100,100),
     sfc_patches=NA
   }
   
-  if(!is.null(basemap_file)){
-    dir.create(path=basemap_file,recursive=TRUE)
-    save(reef_sf,patch_dists,sfc_patches,bathy_rast,file=paste0(basemap_file,"/basemap.RData"))
-    writeRaster(base_rast,filename=paste0(basemap_file,"/basemap.tif"),overwrite=TRUE)
+  if(!is.null(basemap_id)){
+    dir.create(path=paste0(experiment_folder,"/b",basemap_id),recursive=TRUE)
+    save(reef_sf,patch_dists,sfc_patches,bathy_rast,file=paste0(experiment_folder,"/b",basemap_id,"/base_b",basemap_id,".RData"))
+    writeRaster(base_rast,filename=paste0(experiment_folder,"/b",basemap_id,"/base_b",basemap_id,".tif"),overwrite=TRUE)
   }
   
   return(list(base_rast=base_rast,bathy_rast=bathy_rast,reef_sf=reef_sf,
@@ -100,13 +100,12 @@ f_GenerateBasemap <- function(x_dist=500,y_dist=500,resol=c(100,100),
 #   qmap_file: where to save the output
 # Outputs:
 #   q_rast: SpatRaster object with two layers: reef (0 for open water and 1 for reef) and q (habitat quality)
-f_GenerateHabQual <- function(base_rast,q_autocorr,target_dist='identity',plot_flag=FALSE,qmap_file=NULL){
+f_GenerateHabQual <- function(q_autocorr,target_dist='identity',plot_flag=FALSE,experiment_folder=NULL,basemap_id=NULL,qmap_id=NULL,set_id=NULL){
   # if a filepath was specified, load the saved base map. Otherwise it's ready to go.
-  if(typeof(base_rast)=="character"){   
-    basemap_file <- base_rast
-    base_rast <- rast(paste0(basemap_file,"/basemap.tif")) # load base_rast
-    print(paste0("using saved base map: ",basemap_file))
-  } 
+  basemap_file <- paste0(experiment_folder,"/b",basemap_id,"/base_b",basemap_id)
+  base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+  print(paste0("using saved base map: ",basemap_file))
+
   nx=ncol(base_rast)
   ny=nrow(base_rast)
   # find the k value to use in fracland function, given the dimensions of the base map
@@ -137,9 +136,8 @@ f_GenerateHabQual <- function(base_rast,q_autocorr,target_dist='identity',plot_f
   }
   
   # only save data if 1) qmap_file is given, and 2) the basemap was previously saved
-  if(!is.null(qmap_file) & exists("basemap_file")){
-    writeRaster(q_rast,filename=paste0(basemap_file,"/",qmap_file,".tif"),overwrite=TRUE)
-    #save(basemap_file,file=paste0(basemap_file,"/",qmap_file,".RData")) # save the path to the basemap data
+  if(!is.null(qmap_id)){
+    writeRaster(q_rast,filename=paste0(experiment_folder,"/b",basemap_id,"/set",set_id,"/qmap_b",basemap_id,"_q",qmap_id,".tif"),overwrite=TRUE)
   }
   
   return(list(q_rast=q_rast))
@@ -219,16 +217,13 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE,popmap_file
 #   sfc_patches
 #   patch_dists
 #   K_rast
-f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
-                          n_anems=50,samp_type="random",inwater_dist=FALSE,
-                          plot_flag=FALSE,popmap_file=NULL){
-  if(!is.null(basemap_file)){
-    load(paste0(basemap_file,"/basemap.RData")) # load reef_sf, bathy_rast (also sfc_patches and patch_dists, but these will be overwritten)
-    base_rast <- rast(paste0(basemap_file,"/basemap.tif")) # load base_rast
-    print(paste0("using saved base map: ",basemap_file))
-  } else{
-    reef_sf <- NULL
-  }
+f_SimPtsOnMap <- function(reef_sf=NULL,base_rast=NULL,n_anems=50,samp_type="random",inwater_dist=FALSE,
+                          plot_flag=FALSE,experiment_folder=NULL,basemap_id=NULL,popmap_id=NULL){
+  basemap_file <- paste0(experiment_folder,"/b",basemap_id,"/base_b",basemap_id)
+  load(paste0(basemap_file,".RData")) # load reef_sf, bathy_rast (also sfc_patches and patch_dists, but these will be overwritten)
+  base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+  print(paste0("using saved base map: ",basemap_file))
+
   # sample the anemones
   if(samp_type=="regular"){
     sfc_patches <- st_sample(reef_sf,size=round(n_anems),type="regular")
@@ -259,9 +254,13 @@ f_SimPtsOnMap <- function(basemap_file=NULL,reef_sf=NULL,base_rast=NULL,
   
   ## output
   hab_type="points"
-  if(!is.null(popmap_file)){
-    save(reef_sf,sfc_patches,patch_dists,hab_type,basemap_file,file=paste0(basemap_file,"/",popmap_file,".RData"))
-    writeRaster(K_rast,filename=paste0(basemap_file,"/",popmap_file,".tif"),overwrite=TRUE)
+  if(!is.null(popmap_id)){
+    save(reef_sf,sfc_patches,hab_type,basemap_file,
+         file=paste0(experiment_folder,"/b",basemap_id,"/pop_b",basemap_id,"_p",popmap_id,".RData"))
+    save(patch_dists,file=paste0(experiment_folder,"/b",basemap_id,"/patchdists_b",basemap_id,"_p",popmap_id,".RData"))
+    writeRaster(K_rast,
+                filename=paste0(experiment_folder,"/b",basemap_id,"/pop_b",basemap_id,"_p",popmap_id,".tif"),
+                overwrite=TRUE)
   }
   
   return(list(K_rast=K_rast,reef_sf=reef_sf,sfc_patches=sfc_patches,patch_dists=patch_dists,hab_type=hab_type))
@@ -273,6 +272,93 @@ f_get_patch_angle <- function(patch_dist){
   patch_angle <- suppressWarnings(2*asin(nav_rad/patch_dist)/(2*pi))
   patch_angle <- ifelse(is.nan(patch_angle),1,patch_angle)
   return(patch_angle)
+}
+
+# Inputs:
+#   nav_rad = navigation radius (in km).
+#   overlap_method: how to calculate discount for sites within nav_rad of each other.
+#     "simple" (divide by number of sites within nav_rad)
+#     or "complicated" (draw all the circles and calculate area of overlap. This is slow.)
+#   qmap_file, popmap_file: if both are given, load in from saved data.
+#   otherwise, q_rast, K_rast, patch_dists, sfc_patches, reef_sf, and hab_type must be given directly
+#   hab_file: output filepath
+# Outputs:
+#   
+f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_file=NULL,basemap_file=NULL,
+                          q_rast=NULL,K_rast=NULL,patch_dists=NULL,sfc_patches=NULL,reef_sf=NULL,hab_type=NULL,
+                          hab_file=NULL){
+  # load in data, if necessary
+  if(!is.null(qmap_file) & !is.null(popmap_file)){
+    #load(paste0(basemap_file,"/",qmap_file,".RData"))
+    load(paste0(basemap_file,"/",popmap_file,".RData")) # loads reef_sf,patch_dists,sfc_patches,hab_type
+    q_rast <- rast(paste0(basemap_file,"/",qmap_file,".tif")) # load q_rast
+    K_rast <- rast(paste0(basemap_file,"/",popmap_file,".tif")) # load K_rast
+  }
+  
+  units(nav_rad) <- 'km'
+  npatch <- length(sfc_patches)
+  
+  ## put q_rast and K_rast together
+  hab_rast <- c(q_rast,K_rast)
+  
+  ## create df_patches (important: ID should be in the same order as in sfc_patches, or distance matrix will be wrong)
+  q_vect <- terra::extract(hab_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)
+  K_vect <- terra::extract(hab_rast$K,vect(sfc_patches),xy=TRUE,search_radius=500)
+  patch_coords <- st_coordinates(sfc_patches)
+  df_patches <- cbind(q_vect[,c("ID","q")],patch_coords)
+  df_patches$K <- K_vect$K[df_patches$ID]
+  df_patches$id <- df_patches$ID
+  df_patches$x <- df_patches$X
+  df_patches$y <- df_patches$Y
+  df_patches <- df_patches[,c("id","x","y","q","K")]
+  df_patches$b <- f_q_to_b(df_patches$q) # calculate reproductive rate (b) from habitat quality (q)
+  
+  ## make patch_angles
+  # these aren't actually angles; they're the fraction of the whole circle covered by the destination patch
+  # (so values from 0 to 1, not 0 to 2pi)
+  # # original method
+  # patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists[1:100,1:100])/(2*pi))
+  # patch_angles[is.nan(patch_angles)] <- 1
+  # # parallel method
+  # patch_angles <- matrix(unlist(mclapply(patch_dists,fn_get_patch_angle,mc.cores=parallelly::availableCores())),
+  #                        nrow=nrow(patch_dists))
+  # # approximation method
+  patch_angles <- (2*nav_rad)/(2*pi*patch_dists)
+  patch_angles[is.nan(patch_angles)] <- 1
+  patch_angles[drop_units(patch_angles)>1] <- 1
+  
+  ## make overlap_discount
+  if(overlap_method=="complicated"){
+    # if patches aren't on a grid,
+    # find the overlap of each patch's basin of attraction with other basins
+    # first define the basins
+    circs=st_buffer(sfc_patches,dist=nav_rad) # nav_rad is specified in km
+    onecirc_area=st_area(circs[1,])
+    # then calculate the overlaps (this is slow; should use mclapply)
+    all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = parallelly::availableCores())
+    all_overlaps <- unlist(all_overlaps)
+    overlap_discount <- 1/(1+all_overlaps)
+  } else{
+    n_neighbors <- rowSums(patch_dists<nav_rad) # number of points within distance nav_rad of focal point (including focal point)
+    overlap_discount <- 1/n_neighbors
+  }
+  
+  hab_params <- list(npatch=npatch,
+                     patch_locations=df_patches,
+                     patch_dists=patch_dists,
+                     patch_angles=patch_angles,
+                     overlap_discount=overlap_discount,
+                     reef_sf=reef_sf,
+                     sfc_patches=sfc_patches,
+                     hab_type=hab_type,
+                     nav_rad=nav_rad,
+                     hab_file=hab_file)
+  
+  if(!is.null(hab_file)){
+    save(hab_params,file=paste0(basemap_file,"/",hab_file,".RData"))
+    writeRaster(hab_rast,filename=paste0(basemap_file,"/",hab_file,".tif"),overwrite=TRUE)
+  }
+  return(hab_params) # note that this doesn't include hab_rast, so if you want this later, you'll need to load it from hab_params$hab_file
 }
 
 # Inputs:
@@ -424,7 +510,8 @@ f_GetConnectivityMatrix <- function(alpha,theta,patch_dists,patch_angles,overlap
 }
 
 ## function to run within f_RunMatrixLoop that gets the plastic connectivity matrix for a given parameter group, g, defined by its index
-f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, overlap_discount, v_p, v_alphas, v_thetas,nav_rad,numCores){
+f_GetPlasticConnMat <- function(g, group_index, patch_locations, patch_dists, patch_angles, 
+                                overlap_discount, v_p, v_alphas, v_thetas,nav_rad,numCores){
   v <- group_index[g,]
   # compute effective parameters for each patch with plasticity (once per group)
   eff_params <- f_plasticityb(patch_locations$b, 

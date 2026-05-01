@@ -170,7 +170,7 @@ f_RunSim <- function(params, hab_params, keep=list("abund","p","kern","sp_struct
     if(output_flag=="all" & (t_i %% output_thin == 0)) {
       Pij[,,t_i/output_thin] <- new_pop
     }
-
+    
     ################## Output ##################
     if(t_i %% max(1,round(nsteps/10)) == 0){
       # status updates to console every so often
@@ -509,16 +509,11 @@ f_RunSimNew <- function(params, hab_params, keep=list("abund","p","kern","sp_str
 #   hab_params: list of habitat-related parameters and objects; output of f_MakeHabitat
 #   output_flag: "all" (npatch x ngroup x nsteps array of abundances) or "lite" (summary stats only for each timestep)
 f_RunSimNewScratch <- function(params, hab_params, keep=list("abund","p","kern","sp_struct"),
-                        output_flag="all",show_plot=FALSE,output_thin=1,output_file=NA){
-  run_i <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-  if(is.na(run_i)) run_i <- 1
-  # Create a new folder in the MSI scratch directory
-  temp_dir <- as.character(paste0(round(as.numeric(Sys.time())),run_i,sample(1:1000,1)))
-  temp_path <- file.path("/scratch.local","schla103",temp_dir)
-  dir.create(temp_path)
+                               output_flag="all",show_plot=FALSE,output_thin=1,output_file=NA,run_i=1,
+                               connmat_folder=NA,connmat_format="fst"){
   
   starttime <- proc.time()
-  numCores <- parallelly::availableCores()
+  #numCores <- parallelly::availableCores()
   
   # load parameters
   list2env(x=params,envir=environment())
@@ -530,9 +525,15 @@ f_RunSimNewScratch <- function(params, hab_params, keep=list("abund","p","kern",
   K <- patch_locations$K 
   b <- patch_locations$b
   q <- patch_locations$q
-  units(patch_dists) <- NULL
   units(nav_rad) <- NULL
-  units(patch_angles) <- NULL
+  
+  # patch_dists and patch_angles
+  # load(file=patchdist_file)
+  # units(patch_dists) <- NULL
+  # patch_angles <- (2*nav_rad)/(2*pi*patch_dists)
+  # patch_angles[is.nan(patch_angles)] <- 1
+  # patch_angles[patch_angles>1] <- 1
+  #patch_angles[drop_units(patch_angles)>1] <- 1
   
   ##### Data structures to describe population ######
   
@@ -647,21 +648,25 @@ f_RunSimNewScratch <- function(params, hab_params, keep=list("abund","p","kern",
       
       # get the connectivity matrix among patches, given the group parameter values and patch-level q's
       # (and accounting for the patch population x per capita output b_i from each patch)
-      if(!file.exists(paste0(temp_path,"/grp_",g,".rds"))){
-        # calculate this matrix, if it hasn't been used before
-        conn_mat <- f_GetPlasticConnMat(g=g, group_index=group_index, patch_locations=patch_locations,
-                                        patch_dists=patch_dists, patch_angles=patch_angles,
-                                        overlap_discount=overlap_discount,
-                                        v_p=v_p, v_alphas=v_alphas, v_thetas=v_thetas,
-                                        nav_rad=nav_rad, numCores=numCores)
-        # then store it
-        write_fst(as.data.frame(conn_mat),paste0(temp_path,"/grp_",g),compress=0)
-        #saveRDS(conn_mat,file=paste0(temp_path,"/grp_",g,".rds"),compress=FALSE)
-        # otherwise, import it
+      # if(!file.exists(paste0(connmat_folder,"/grp_",g,".rds"))){
+      #   # calculate this matrix, if it hasn't been used before
+      #   conn_mat <- f_GetPlasticConnMat(g=g, group_index=group_index, patch_locations=patch_locations,
+      #                                   patch_dists=patch_dists, patch_angles=patch_angles,
+      #                                   overlap_discount=overlap_discount,
+      #                                   v_p=v_p, v_alphas=v_alphas, v_thetas=v_thetas,
+      #                                   nav_rad=nav_rad, numCores=numCores)
+      #   # then store it
+      #   #write_fst(as.data.frame(conn_mat),paste0(connmat_folder,"/grp_",g),compress=0)
+      #   saveRDS(conn_mat,file=paste0(connmat_folder,"/grp_",g,".rds"),compress=FALSE)
+      #   # otherwise, import it
+      #   
+      # } else{
+      if(connmat_format=="fst"){
+        conn_mat <- as.matrix(read_fst(paste0(connmat_folder,"/grp_",g)))
       } else{
-        conn_mat <- as.matrix(read_fst(paste0(temp_path,"/grp_",g)))
-        #conn_mat <- readRDS(paste0(temp_path,"/grp_",g,".rds"))
-      } 
+        conn_mat <- readRDS(paste0(connmat_folder,"/grp_",g,".rds")) 
+      }
+      # } 
       
       to_patch <- (1-p_penalty)*patch_locations$b*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
       
@@ -672,6 +677,264 @@ f_RunSimNewScratch <- function(params, hab_params, keep=list("abund","p","kern",
         temp_pop[,mut_group] <- (mu/6)*to_patch+temp_pop[,mut_group]
       }
     }
+    
+    ################## Competition ##################
+    
+    # sample K (or current abundance, if <K) individuals per patch and distribute them among groups of parameter values
+    # (with probability according to the current abundance of each group of param values in that patch)
+    # patch_abunds <- rowSums(temp_pop)
+    # for(i_patch in which(patch_abunds>0)){
+    #   survivors=rmultinom(n=1, # there are this many cells (i.e., combos of parameter values) for the patch
+    #                       size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
+    #                       prob = temp_pop[i_patch,]) # probability of each cell being chosen depends on its current abundance)
+    #   new_pop[i_patch,] <- survivors
+    # }
+    
+    patch_abunds <- rowSums(temp_pop)
+    comp_results <- lapply(1:npatch,function(i) f_Competition(i_patch=i,patch_abunds=patch_abunds,patch_locations=patch_locations,
+                                                              temp_pop=temp_pop,ngroups=ngroups))
+    #comp_results <- mclapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop),mc.cores = numCores)
+    new_pop <- do.call(rbind,comp_results)
+    
+    previous_pop <- new_pop
+    
+    ################## Output ##################
+    if(t_i %% max(1,round(nsteps/10000)) == 0){
+      # status updates to console every so often
+      print(t_i)
+      print(proc.time()-interval_starttime)
+      interval_starttime <- proc.time()
+      
+      # plot, if requested
+      if(show_plot==TRUE){
+        if(hab_type=="points"){
+          g_map_abund <- ggplot(reef_sf)+
+            geom_sf()+
+            geom_sf(data=sfc_patches,aes(color=factor(rowSums(new_pop))))+
+            labs(color="Abundance",title=paste0("t_i=",t_i))+
+            scale_color_manual(values=c("blue","red"),breaks=c(1,0))+
+            theme_minimal()+
+            annotation_scale()
+          print(g_map_abund)
+        }
+        if(hab_type=="grid"){
+          g_map_abund <- ggplot(patch_locations,aes(x=x,y=y))+
+            geom_tile(aes(fill=rowSums(new_pop)))+
+            labs(title=paste0("t_i=",t_i),fill="abund")+
+            scale_color_continuous(limits=c(0,max(K)))
+          print(g_map_abund)
+        }
+      }
+    }
+    
+    if((output_flag=="all") & (t_i %% output_thin == 0)){
+      export_mat <- cbind(rep(t_i,times=npatch),previous_pop)
+      fwrite(export_mat,file=paste0(output_file,"_raw.csv"),append=TRUE)
+    }
+  } #t_i
+  
+  time_run <- proc.time()-starttime
+  return(time_run)
+}
+
+######################## Main simulation function #######################
+# Inputs:
+#   params: list of biological and simulation parameters
+#   hab_params: list of habitat-related parameters and objects; output of f_MakeHabitat
+#   output_flag: "all" (npatch x ngroup x nsteps array of abundances) or "lite" (summary stats only for each timestep)
+f_RunSimComboStorage <- function(params, hab_params, keep=list("abund","p","kern","sp_struct"),
+                                 output_flag="all",show_plot=FALSE,output_thin=1,output_file=NA,run_i=1,
+                                 connmat_folder=NA,connmat_format="fst",patchdist_file=NULL){
+  
+  # # Create a new folder in the MSI scratch directory
+  # dir.create(connmat_folder) 
+  
+  starttime <- proc.time()
+  numCores <- parallelly::availableCores()
+  
+  # load parameters
+  list2env(x=params,envir=environment())
+  
+  # load habitat data structures (see f_MakeHabitat for details on what's in each object)
+  list2env(x=hab_params,envir=environment()) 
+  if(hab_type=="points") patch_locations$K <- 1 # sometimes these end up as 0 from map resolution issues
+  # save original values, in case they're modified by disturbance
+  K <- patch_locations$K 
+  b <- patch_locations$b
+  q <- patch_locations$q
+  units(nav_rad) <- NULL
+  
+  # patch_dists and patch_angles
+  load(file=patchdist_file)
+  units(patch_dists) <- NULL
+  patch_angles <- (2*nav_rad)/(2*pi*patch_dists)
+  patch_angles[is.nan(patch_angles)] <- 1
+  patch_angles[patch_angles>1] <- 1
+  
+  connmat_size <- as.numeric(object.size(patch_dists)/(10^6)) # in Mb
+  job_mem <- 450*1000 # in MB
+  
+  ##### Data structures to describe population ######
+  
+  ## 1. group_index: all unique combinations of parameters alpha, theta, and p
+  group_index <- expand.grid(alpha=1:length(v_alphas),theta=1:length(v_thetas),p=1:length(v_p))
+  ngroups <- nrow(group_index)
+  
+  ## 2. Population objects
+  previous_pop <- matrix(0,nrow=npatch,ncol=ngroups) # hold intermediate population values for this timestep, before competition
+  new_pop <- matrix(0,nrow=npatch,ncol=ngroups) # hold intermediate population values for this timestep, before competition
+  
+  # initialize previous_pop
+  if(alpha_start==0) alpha_start = 1:length(v_alphas)
+  if(theta_start==0) theta_start = 1:length(v_thetas)
+  if(p_start==0) p_start = 1:length(v_p)
+  start_grps <- which((group_index$alpha %in% alpha_start) & (group_index$theta %in% theta_start) & (group_index$p %in% p_start))
+  start_probs <- rep(0,ngroups)
+  start_probs[start_grps] <- 1
+  starts <- lapply(1:npatch,function(i) as.vector(rmultinom(n=1,size=patch_locations$K[i],prob=start_probs))) 
+  previous_pop <- do.call(rbind,starts)
+  
+  ## 3. mutation_destinations: for each parameter groups, what parameter groups can a single mutation reach?
+  ## dimensions 1 = ngroups, 2 = number of types of mutation events (including no mutation)
+  # first, list the possible mutations to each parameter
+  # (each index represents a mutation event; only one parameter can change per mutation event)
+  alpha_adds=c(0,1,-1,0,0,0,0)
+  theta_adds=c(0,0,0,1,-1,0,0)
+  p_adds=c(0,0,0,0,0,1,-1)
+  # then make the matrix
+  mutation_destinations <- matrix(NA, nrow=ngroups, ncol=length(alpha_adds))
+  for(mut_num in 1:length(alpha_adds)) {
+    for(grp in 1:ngroups) {
+      dest_grp <- which(group_index$alpha == group_index$alpha[grp] + alpha_adds[mut_num] & 
+                          group_index$theta == group_index$theta[grp] + theta_adds[mut_num] &
+                          group_index$p == group_index$p[grp] + p_adds[mut_num])
+      mutation_destinations[grp, mut_num] <- ifelse(length(dest_grp)!=0, dest_grp, grp)
+    }
+  }
+  
+  ## 4. Initialize temporary data structures
+  temp_pop <- matrix(0,nrow=npatch,ncol=ngroups) # hold intermediate population values for this timestep, before competition
+  to_patch <- numeric(npatch) # hold numbers of immigrants to each patch during dispersal
+  all_conn_mats <- vector("list", ngroups) # list to hold connectivity matrices, which will be computed as they're needed (will have to be reset if K_i changes)
+  
+  ## 5. Initialize output data structures
+  if(output_flag=="lite"){
+    # df_out = data.frame(t_i=1:nsteps,abund=NA,p_mean=NA,p_var=NA,
+    #                                  fund_kernmode_mean=NA,fund_kernmode_var=NA,
+    #                                  fund_kernmean_mean=NA,fund_kernmean_var=NA,
+    #                                  eff_kernmode_mean=NA,eff_kernmode_var=NA,
+    #                                  eff_kernmean_mean=NA,eff_kernmean_var=NA)
+    df_out <- data.frame(t_i=integer(),metric=character(),mean=numeric(),var=numeric())
+  }
+  
+  # objects to hold param values in different ways for more efficient use later
+  # p_by_group <- v_p[group_index$p] # value, not index
+  # alpha_by_group <- group_index$alpha # index, not value
+  # theta_by_group <- group_index$theta # index, not value
+  # Pij_alpha <- matrix(alpha_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # index, not value
+  # Pij_theta <- matrix(theta_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # index, not value
+  # Pij_alpha_val <- v_alphas[Pij_alpha]
+  # Pij_theta_val <- v_thetas[Pij_theta]
+  # Pij_p <- matrix(p_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # value, not index
+  
+  # # generate matrix of weights (inverse distance) to use in calculating Moran's I
+  # # is this an okay distance function to use? I know it matters when doing the statistical test,
+  # # but maybe as long as we use the same metric for all timesteps and simulations it's OK for comparing among them.
+  # # I tried a few options (1/d, 1/d^2, 1/(1+d^2)) and the dynamics were quite similar.
+  # moran_weights <- 1/(patch_dists) 
+  # diag(moran_weights) <- 0
+  
+  ## 6. Save input information
+  metadata_list <- list(params=params,group_index=group_index,patch_locations=patch_locations,hab_file=hab_params$hab_file)
+  save(metadata_list,file=paste0(output_file,"_metadata.RData"))
+  
+  ################ Simulate ###################
+  interval_starttime <- proc.time()
+  for(t_i in 2:nsteps){
+    temp_pop[ ] <- 0 # reset temp_pop
+    
+    ################## Disturbance ##################
+    
+    if(t_i %% 10 == 0){ # disturbances last for 10 timesteps
+      # first, reset all K's from any disturbance that occurred 10 timesteps previously
+      if(prod(patch_locations$K == as.vector(K))==0){
+        patch_locations$K = as.vector(K)
+        all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K
+        print(paste("t_i =",t_i,"reset connectivity matrices"))
+      }
+      
+      # then make a new disturbance (maybe)
+      if(rbinom(n=1,size=1,p=disturb_prob)==1){
+        print(paste("t_i =",t_i,"disturbance"))
+        all_conn_mats <- vector("list", ngroups) # need to reset this if we're changing K
+        
+        disturb <- ideal.map(ny, nx, p = 0.2, nshape = 1, type = "circle", maxval = 1, minval = 0, binmap = TRUE, rasterflag = FALSE, plotflag=FALSE)
+        disturb_patches <- as.numeric(na.omit(patch_map[disturb!=0]))
+        patch_locations$K[disturb_patches] <- 0
+      }
+    }
+    
+    ################## Reproduction and Dispersal and Mutation ##################
+    pop_by_group <- colSums(previous_pop)
+    
+    #print(paste0("timestep: ",t_i))
+    for(g in which(pop_by_group>0)){
+      # get parameter values for that parameter group
+      v <- group_index[g,]
+      p_penalty <- abs(v_p[v$p])*0
+      
+      # get population of each patch for that parameter group
+      patch_pops <- previous_pop[,g]
+      
+      # get the connectivity matrix among patches, given the group parameter values and patch-level q's
+      # (and accounting for the patch population x per capita output b_i from each patch)
+      
+      ## scratch_folder: global.scratch location
+      
+      #print(g)
+      # if it hasn't been imported from global.scratch yet
+      if(is.null(all_conn_mats[[g]])){
+        #print("importing")
+        # import it as conn_mat
+        conn_mat <- as.matrix(read_fst(paste0(connmat_folder,"/grp_",g)))
+        #conn_mat <- readRDS(paste0(connmat_folder,"/grp_",g,".rds"))
+        # and save it in the list:
+        x <- gc()
+        current_used <- sum(x[,2]) # current memory usage in Mb
+        if(current_used<0.75*job_mem){ # might mess with this criterion
+          # save it in memory
+          all_conn_mats[[g]] <- conn_mat
+          #print("saving to memory")
+        } else{
+          # save it on RAMdisk, and put the path in the all_conn_mats list
+          write_fst(as.data.frame(conn_mat),paste0("/dev/shm/grp_",g),compress=0)
+          # saveRDS(conn_mat,file=paste0("/dev/shm/grp_",g,".rds"),compress=FALSE)
+          all_conn_mats[[g]] <- paste0("/dev/shm/grp_",g)
+          #print("saving to disk (/dev/shm)")
+        }
+        # if it has already been imported from global scratch
+      } else{
+        # grab what's in the list. If this is already a connectivity matrix, we're done.
+        conn_mat <- all_conn_mats[[g]]
+        #print("exists in memory")
+        # if it's just the filepath, get the object
+        if(is.character(all_conn_mats[[g]])){
+          # find the appropriate file on RAMdisk, and save it as the conn_mat object
+          conn_mat <- as.matrix(read_fst(conn_mat))
+          #conn_mat <- readRDS(conn_mat)
+          #print("reading from disk")
+        }
+      }
+      
+      to_patch <- (1-p_penalty)*patch_locations$b*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
+      
+      # Divide up to_patch among parameter groups that are the result of mutation
+      temp_pop[,g] <- (1-mu)*to_patch+temp_pop[,g]
+      
+      for(mut_group in mutation_destinations[g,-1]){ # for each of the possible mutations. This doesn't need to be a for loop, but let's do some error checking first.
+        temp_pop[,mut_group] <- (mu/6)*to_patch+temp_pop[,mut_group]
+      }
+    } #g
     
     ################## Competition ##################
     
@@ -732,6 +995,11 @@ f_RunSimNewScratch <- function(params, hab_params, keep=list("abund","p","kern",
   return(time_run)
 }
 
+
+
+
+
+
 ######################## function to do competition step in parallel #######################
 f_Competition <- function(i_patch,patch_abunds,patch_locations,temp_pop,ngroups){
   # decide the maximum number of larvae that can settle in each patch, based on how many arrived (patch_abunds[i_patch])
@@ -781,6 +1049,7 @@ f_ReprodDispMut <- function(g,group_index,previous_step,mutation_destinations,al
   
   return(temp_pop_g)
 }
+
 
 ############## process Pij into a dataframe #############
 f_ProcessPij <- function(Pij,patch_locations,group_index,output_thin){

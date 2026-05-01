@@ -15,7 +15,7 @@ library(MASS)
 #require(rhdf5)
 library(parallel)
 library(parallelly)
-#library(ape) # check if we need this
+library(ape) # need for Moran's I
 library(gstat)
 library(sf)
 library(raster)

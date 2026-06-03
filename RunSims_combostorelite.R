@@ -1,6 +1,7 @@
 ## After connectivity matrices have been made, run the sims
 source('0_Setup.R')
-experiment_name <- "Exp2_20260423"
+library(profvis)
+experiment_name <- "Exp3_20260528"
 experiment_folder <- paste0("experiments/",experiment_name)
 experiment_index <- read.csv(paste0(experiment_folder,"/experiment_index.csv"))
 load(paste0(experiment_folder,"/basemap_index.RData")) # basemap index
@@ -13,7 +14,7 @@ run_info <- experiment_index[run_i,]
 temp_dir <- paste0("connmats_",experiment_name)
 temp_path <- file.path("/scratch.global","schla103",temp_dir)
 #temp_path <- paste0("/dev/shm")
-keep_path <- paste0(experiment_folder,"/habfiles")
+keep_path <- paste0(experiment_folder,"/habfiles2")
 
 source("functions/f_RunSimComboStorageLite.R")
 
@@ -29,13 +30,24 @@ load(file=paste0(keep_path,"/habparams_",run_info$mapID,".RData"))
 patchdist_file <- paste0(experiment_folder,"/b",run_info$basemap_id,"/patchdists_b",run_info$basemap_id,
                          "_p",run_info$popmap_id,".RData")
 
-#### Run sim
-f_RunSimComboStorageLite(params,hab_params=hab_params,output_flag="lite",show_plot = FALSE,output_thin=25,
-                         output_file=paste0(experiment_folder,"/output/rep3/map_",run_info$mapID),run_i=run_i,
-                         connmat_folder=paste0(temp_path,"/map_",run_info$mapID),connmat_format="fst",
-                         patchdist_file=patchdist_file,
-                         connmat_size_GB = 3.2, jobmem_GB = 450)
+jobmem_GB <- as.numeric(Sys.getenv("SLURM_MEM_PER_NODE"))/1000
 
+#### Run sim
+f_RunSimComboStorageLite(params,hab_params=hab_params,output_flag="lite",show_plot = FALSE,output_thin=20,
+                                              output_file=paste0(experiment_folder,"/output/rep2/map_",run_info$mapID),run_i=run_i,
+                                              connmat_folder=paste0(temp_path,"/map_",run_info$mapID),connmat_format="fst",
+                                              patchdist_file=patchdist_file,
+                                              connmat_size_GB = 3.2, jobmem_GB = jobmem_GB)
+
+
+# prof_sim <- profvis({f_RunSimComboStorageLite(params,hab_params=hab_params,output_flag="lite",show_plot = FALSE,output_thin=25,
+#                          output_file=paste0(experiment_folder,"/output/reptest/map_",run_info$mapID),run_i=run_i,
+#                          connmat_folder=paste0(temp_path,"/map_",run_info$mapID),connmat_format="fst",
+#                          patchdist_file=patchdist_file,
+#                          connmat_size_GB = 3.2, jobmem_GB = 300)
+# })
+# htmlwidgets::saveWidget(prof_sim,"profile.html")
+#browseURL("profile.html")
 
 # f_RunSimNewScratch(params,hab_params=hab_params,output_flag="all",show_plot = FALSE,output_thin=25,
 #                    output_file=paste0(experiment_folder,"/output/map_",run_info$mapID),run_i=run_i,

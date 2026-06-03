@@ -79,8 +79,8 @@ f_RunSimComboStorage_Parallel <- function(params, hab_params, keep=list("abund",
   temp_pop <- matrix(0,nrow=npatch,ncol=ngroups) # hold intermediate population values for this timestep, before competition
   to_patch <- numeric(npatch) # hold numbers of immigrants to each patch during dispersal
 
-  all_conn_mats <- lapply(1:ngroups,
-                            function(i) fn_readconnmat(g=i,connmat_folder=connmat_folder,job_mem=job_mem,connmat_format=connmat_format))
+  # all_conn_mats <- lapply(1:ngroups,
+  #                           function(i) fn_readconnmat(g=i,connmat_folder=connmat_folder,job_mem=job_mem,connmat_format=connmat_format))
   
   all_conn_mats <- mclapply(1:ngroups,
                             function(i) fn_readconnmat(g=i,connmat_folder=connmat_folder,job_mem=job_mem,connmat_format=connmat_format),
@@ -131,9 +131,9 @@ f_RunSimComboStorage_Parallel <- function(params, hab_params, keep=list("abund",
   # is this an okay distance function to use? I know it matters when doing the statistical test,
   # but maybe as long as we use the same metric for all timesteps and simulations it's OK for comparing among them.
   # I tried a few options (1/d, 1/d^2, 1/(1+d^2)) and the dynamics were quite similar.
-  load(file=patchdist_file)
-  moran_weights <- 1/(drop_units(patch_dists))
-  diag(moran_weights) <- 0
+  # load(file=patchdist_file)
+  # moran_weights <- 1/(drop_units(patch_dists))
+  # diag(moran_weights) <- 0
   
   ## 6. Save input information
   metadata_list <- list(params=params,group_index=group_index,patch_locations=patch_locations,hab_file=hab_params$hab_file)
@@ -158,7 +158,8 @@ f_RunSimComboStorage_Parallel <- function(params, hab_params, keep=list("abund",
   # correlation between p and habitat quality
   cor_p_q <- cor(p_by_patch[patch_full],patch_locations$q[patch_full])
   # Moran's I for p
-  p_Moran <- Moran.I(as.vector(p_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+  # p_Moran <- Moran.I(as.vector(p_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+  p_Moran <- NA
   # overall mean and variance of p (value, not index) at the timestep
   p_mean <- sum(patch_pops * p_by_patch,na.rm=TRUE)/sum(patch_pops,na.rm=TRUE)
   p_var <- sum(group_pops*(p_by_group-p_mean)^2)/sum(previous_pop)
@@ -170,7 +171,8 @@ f_RunSimComboStorage_Parallel <- function(params, hab_params, keep=list("abund",
   # correlation between theta and habitat quality
   cor_theta_q <- cor(theta_by_patch[patch_full],patch_locations$q[patch_full])
   # Moran's I for theta
-  theta_Moran <- Moran.I(as.vector(theta_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+  # theta_Moran <- Moran.I(as.vector(theta_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+  theta_Moran <- NA
   # overall mean and variance of theta (value, not index) at the timestep
   theta_mean <- sum(patch_pops * theta_by_patch,na.rm=TRUE)/sum(patch_pops,na.rm=TRUE)
   theta_var <- sum(group_pops*(theta_by_group-theta_mean)^2)/sum(previous_pop)
@@ -187,7 +189,8 @@ f_RunSimComboStorage_Parallel <- function(params, hab_params, keep=list("abund",
   # correlation between effective theta value and habitat quality
   cor_efftheta_q <- cor(efftheta_by_patch[patch_full],patch_locations$q[patch_full])
   # Moran's I for p
-  efftheta_Moran <- Moran.I(as.vector(efftheta_by_patch),weight=moran_weights,na.rm = TRUE)$observed
+  # efftheta_Moran <- Moran.I(as.vector(efftheta_by_patch),weight=moran_weights,na.rm = TRUE)$observed
+  efftheta_Moran <- NA
   # overall mean and variance of effective theta (value, not index) at the timestep
   efftheta_mean <- sum(previous_pop * Pij_thetaval_eff)/sum(previous_pop)
   efftheta_var <- sum(previous_pop*(Pij_thetaval_eff-efftheta_mean)^2)/sum(previous_pop)
@@ -302,7 +305,8 @@ f_RunSimComboStorage_Parallel <- function(params, hab_params, keep=list("abund",
           # correlation between p and habitat quality
           cor_p_q <- cor(p_by_patch[patch_full],patch_locations$q[patch_full])
           # Moran's I for p
-          p_Moran <- Moran.I(as.vector(p_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+          # p_Moran <- Moran.I(as.vector(p_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+          p_Moran <- NA
           # overall mean and variance of p (value, not index) at the timestep
           p_mean <- sum(patch_pops * p_by_patch,na.rm=TRUE)/sum(patch_pops,na.rm=TRUE)
           p_var <- sum(group_pops*(p_by_group-p_mean)^2)/sum(previous_pop)
@@ -314,7 +318,8 @@ f_RunSimComboStorage_Parallel <- function(params, hab_params, keep=list("abund",
           # correlation between theta and habitat quality
           cor_theta_q <- cor(theta_by_patch[patch_full],patch_locations$q[patch_full])
           # Moran's I for theta
-          theta_Moran <- Moran.I(as.vector(theta_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+          # theta_Moran <- Moran.I(as.vector(theta_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+          theta_Moran <- NA
           # overall mean and variance of theta (value, not index) at the timestep
           theta_mean <- sum(patch_pops * theta_by_patch,na.rm=TRUE)/sum(patch_pops,na.rm=TRUE)
           theta_var <- sum(group_pops*(theta_by_group-theta_mean)^2)/sum(previous_pop)
@@ -331,7 +336,8 @@ f_RunSimComboStorage_Parallel <- function(params, hab_params, keep=list("abund",
           # correlation between effective theta value and habitat quality
           cor_efftheta_q <- cor(efftheta_by_patch[patch_full],patch_locations$q[patch_full])
           # Moran's I for p
-          efftheta_Moran <- Moran.I(as.vector(efftheta_by_patch),weight=moran_weights,na.rm = TRUE)$observed
+          # efftheta_Moran <- Moran.I(as.vector(efftheta_by_patch),weight=moran_weights,na.rm = TRUE)$observed
+          efftheta_Moran <- NA
           # overall mean and variance of effective theta (value, not index) at the timestep
           efftheta_mean <- sum(previous_pop * Pij_thetaval_eff)/sum(previous_pop)
           efftheta_var <- sum(previous_pop*(Pij_thetaval_eff-efftheta_mean)^2)/sum(previous_pop)
@@ -391,7 +397,7 @@ f_ReprodDispMut_New <- function(g,patch_locations,group_index,pop_by_group,v_p,p
   return(temp_pop_g)
 }
 
-fn_readconnmat <- function(g,connmat_folder,job_mem,connmat_format){
+fn_readconnmat <- function(g,connmat_folder,job_mem,connmat_format="rds"){
   x <- gc()
   current_used <- sum(x[,2]) # current memory usage in Mb
   connmat_file <- ifelse(connmat_format=="rds",paste0("grp_",g,".rds"),paste0("grp_",g))
@@ -408,4 +414,41 @@ fn_readconnmat <- function(g,connmat_folder,job_mem,connmat_format){
     
     return(file.path("/dev/shm",connmat_file))
   }
+}
+
+#### function for connmats
+# output: rates of dispersal from each patch to each other patch
+# Connectivity[i,j] = the proportion of dispersers from patch j that land in patch i
+f_GetConnMat <- function(g,group_index,patch_locations,v_p,v_alphas,v_thetas,eff_kern_index,eff_kern_df,patch_dists,nav_rad,numCores){
+  v <- group_index[g,]
+  # compute effective parameters for each patch with plasticity (once per group)
+  eff_params <- f_plasticityb(patch_locations$b, 
+                              v_p[v$p], 
+                              v$alpha, 
+                              v$theta,
+                              n_alpha = length(v_alphas),
+                              n_theta = length(v_thetas))
+  alpha <- eff_params$alpha_plastic
+  theta <- eff_params$theta_plastic
+  npatch=length(alpha)
+  # row of kernparam that corresponds to each origin patch
+  kernparam_rows <- sapply(1:npatch,function(i) eff_kern_index[eff_params$theta_plastic[i],eff_params$alpha_plastic[i]])
+  
+  connectivity_matrix <- vapply(1:npatch,function(i){ # do once for each origin patch
+    # Evaluate volume under kernel in a circle of radius nav_rad around destination site
+    cm_i <- pi*nav_rad^2*dgamma(patch_dists[,i],shape=alpha[i],scale=theta[i])
+    # Improve volume estimate for self-recruitment value
+    cm_i[i] <- eff_kern_df$selfrecruit[kernparam_rows[i]]
+    # Do all three steps below in one
+    cm_i <- (cm_i*patch_locations$overlap_discount)*eff_kern_df$offmap_corr[kernparam_rows[i]]/(2*pi*theta[i])
+    # # Divide by 2pitheta so all integrals sum to one
+    # cm_i <- cm_i/(2*pi*theta[i])
+    # # Apply a correction factor to account for the fact that broader kernels lose more offspring to edge effects
+    # cm_i <- cm_i*eff_kern_df$offmap_corr[kernparam_rows[i]]
+    # # Apply a correction for close neighbors
+    # cm_i <- cm_i*patch_locations$overlap_discount
+  },numeric(npatch)) #, mc.cores=numCores
+  #connectivity_matrix <- do.call(cbind,connectivity_matrix)
+  #connectivity_matrix <- matrix(unlist(cmlist),ncol=length(cmlist))
+  return(connectivity_matrix)
 }

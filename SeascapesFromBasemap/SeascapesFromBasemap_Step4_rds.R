@@ -26,6 +26,9 @@ list2env(x=params,envir=environment())
 load(file=paste0(experiment_folder,"/habfiles/habparams_",mapID_i,".RData")) 
 list2env(x=hab_params,envir=environment()) 
 
+map_info <- list(basemap_id=1,popmap_id=2)
+mapID_i=5
+
 # patch_dists and patch_angles
 load(file=paste0(experiment_folder,"/b",map_info$basemap_id,"/patchdists_b",map_info$basemap_id,"_p",map_info$popmap_id,".RData"))
 patch_angles <- readRDS(paste0(temp_path,"/map_",mapID_i,"/patch_angles",".rds"))
@@ -54,6 +57,6 @@ for(g in 1:ngroups){
                                   nav_rad=nav_rad, numCores=parallelly::availableCores())
   # then store it
   #write_fst(as.data.frame(conn_mat),paste0(temp_path,"/map_",mapID_i,"/grp_",g),compress=0)
-  saveRDS(object=conn_mat,file=paste0(temp_path,"/map_",mapID_i,"/grp_",g,".rds"),compress=FALSE)
+  saveRDS(object=conn_mat,file=paste0(temp_path,"/grp_",g,".rds"),compress=FALSE)
   
 } # g

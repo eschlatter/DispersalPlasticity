@@ -1,7 +1,7 @@
 ## script to run that just generates the connectivity matrices and saves them to global scratch
 ## use a bunch of cores, so this goes fast
 source('0_Setup.R')
-experiment_name <- "Exp2_20260423"
+experiment_name <- "SmallSim_Testing"
 experiment_folder <- paste0("experiments/",experiment_name)
 experiment_index <- read.csv(paste0(experiment_folder,"/experiment_index.csv"))
 load(paste0(experiment_folder,"/basemap_index.RData")) # basemap index

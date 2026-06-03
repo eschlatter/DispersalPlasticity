@@ -42,7 +42,7 @@ jobmem_GB = 450
 f_RunSimComboStorage_Parallel(params=params,hab_params=hab_params,output_flag="lite",show_plot = FALSE,output_thin=25,
                      output_file=paste0(experiment_folder,"/output/rep3/map_",run_info$mapID),run_i=run_i,
                      connmat_folder=paste0(temp_path,"/map_",run_info$mapID),connmat_format="rds",
-                     patchdist_file=patchdist_file,connmat_size_GB = 3.2, jobmem_GB = 450)
+                     patchdist_file=patchdist_file,connmat_size_GB = connmat_size_GB, jobmem_GB = jobmem_GB)
 
 
 

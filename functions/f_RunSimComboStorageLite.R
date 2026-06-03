@@ -7,13 +7,12 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
                                  output_flag="all",show_plot=FALSE,output_thin=1,output_file=NA,run_i=1,
                                  connmat_folder=NA,connmat_format="fst",patchdist_file=NULL,
                                  connmat_size_GB=3.2,jobmem_GB=400){
-  
   starttime <- proc.time()
   numCores <- parallelly::availableCores()
+  n_connmats_tostore <- floor((0.75*jobmem_GB)/connmat_size_GB)
   
   # load parameters
   list2env(x=params,envir=environment())
-  
   # load habitat data structures (see f_MakeHabitat for details on what's in each object)
   list2env(x=hab_params,envir=environment()) 
   if(hab_type=="points") patch_locations$K <- 1 # sometimes these end up as 0 from map resolution issues
@@ -94,9 +93,9 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   # is this an okay distance function to use? I know it matters when doing the statistical test,
   # but maybe as long as we use the same metric for all timesteps and simulations it's OK for comparing among them.
   # I tried a few options (1/d, 1/d^2, 1/(1+d^2)) and the dynamics were quite similar.
-  load(file=patchdist_file)
-  moran_weights <- 1/(drop_units(patch_dists))
-  diag(moran_weights) <- 0
+  # load(file=patchdist_file)
+  # moran_weights <- 1/(drop_units(patch_dists))
+  # diag(moran_weights) <- 0
   
   ## 6. Save input information
   metadata_list <- list(params=params,group_index=group_index,patch_locations=patch_locations,hab_file=hab_params$hab_file)
@@ -122,7 +121,8 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   # correlation between p and habitat quality
   cor_p_q <- cor(p_by_patch[patch_full],patch_locations$q[patch_full])
   # Moran's I for p
-  p_Moran <- Moran.I(as.vector(p_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+  #p_Moran <- Moran.I(as.vector(p_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+  p_Moran <- NA
   # overall mean and variance of p (value, not index) at the timestep
   p_mean <- sum(patch_pops * p_by_patch,na.rm=TRUE)/sum(patch_pops,na.rm=TRUE)
   p_var <- sum(group_pops*(p_by_group-p_mean)^2)/sum(previous_pop)
@@ -134,7 +134,8 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   # correlation between theta and habitat quality
   cor_theta_q <- cor(theta_by_patch[patch_full],patch_locations$q[patch_full])
   # Moran's I for theta
-  theta_Moran <- Moran.I(as.vector(theta_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+  #theta_Moran <- Moran.I(as.vector(theta_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+  theta_Moran <- NA
   # overall mean and variance of theta (value, not index) at the timestep
   theta_mean <- sum(patch_pops * theta_by_patch,na.rm=TRUE)/sum(patch_pops,na.rm=TRUE)
   theta_var <- sum(group_pops*(theta_by_group-theta_mean)^2)/sum(previous_pop)
@@ -151,7 +152,8 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   # correlation between effective theta value and habitat quality
   cor_efftheta_q <- cor(efftheta_by_patch[patch_full],patch_locations$q[patch_full])
   # Moran's I for p
-  efftheta_Moran <- Moran.I(as.vector(efftheta_by_patch),weight=moran_weights,na.rm = TRUE)$observed
+  #efftheta_Moran <- Moran.I(as.vector(efftheta_by_patch),weight=moran_weights,na.rm = TRUE)$observed
+  efftheta_Moran <- NA
   # overall mean and variance of effective theta (value, not index) at the timestep
   efftheta_mean <- sum(previous_pop * Pij_thetaval_eff)/sum(previous_pop)
   efftheta_var <- sum(previous_pop*(Pij_thetaval_eff-efftheta_mean)^2)/sum(previous_pop)
@@ -209,9 +211,9 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
         if(connmat_format=="fst"){conn_mat <- as.matrix(read_fst(paste0(connmat_folder,"/grp_",g)))
         } else if(connmat_format=="rds"){conn_mat <- readRDS(paste0(connmat_folder,"/grp_",g,".rds"))}
         # and save it in the list:
-        x <- gc()
-        current_used <- sum(x[,2]) # current memory usage in Mb
-        if(current_used<0.75*job_mem){ # might mess with this criterion
+        # x <- gc()
+        # current_used <- sum(x[,2]) # current memory usage in Mb
+        if(g<n_connmats_tostore){ #(current_used<0.75*job_mem){ # might mess with this criterion
           # save it in memory
           all_conn_mats[[g]] <- conn_mat
           #print("saving to memory")
@@ -259,10 +261,12 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
     # }
     
     patch_abunds <- rowSums(temp_pop)
-    comp_results <- lapply(1:npatch,function(i) f_Competition(i_patch=i,patch_abunds=patch_abunds,patch_locations=patch_locations,
-                                                              temp_pop=temp_pop,ngroups=ngroups))
+    comp_results <- vapply(1:npatch,function(i) f_Competition(i_patch=i,patch_abunds=patch_abunds,patch_locations=patch_locations,
+                                                              temp_pop=temp_pop,ngroups=ngroups),
+                           integer(ngroups))
     #comp_results <- mclapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop),mc.cores = numCores)
-    new_pop <- do.call(rbind,comp_results)
+    #new_pop <- do.call(rbind,comp_results)
+    new_pop <- t(comp_results)
     
     previous_pop <- new_pop
     
@@ -345,7 +349,8 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
           # correlation between p and habitat quality
           cor_p_q <- cor(p_by_patch[patch_full],patch_locations$q[patch_full])
           # Moran's I for p
-          p_Moran <- Moran.I(as.vector(p_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+          #p_Moran <- Moran.I(as.vector(p_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+          p_Moran <- NA
           # overall mean and variance of p (value, not index) at the timestep
           p_mean <- sum(patch_pops * p_by_patch,na.rm=TRUE)/sum(patch_pops,na.rm=TRUE)
           p_var <- sum(group_pops*(p_by_group-p_mean)^2)/sum(previous_pop)
@@ -357,7 +362,8 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
           # correlation between theta and habitat quality
           cor_theta_q <- cor(theta_by_patch[patch_full],patch_locations$q[patch_full])
           # Moran's I for theta
-          theta_Moran <- Moran.I(as.vector(theta_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+          #theta_Moran <- Moran.I(as.vector(theta_by_patch),weight=moran_weights,na.rm=TRUE)$observed
+          theta_Moran <- NA
           # overall mean and variance of theta (value, not index) at the timestep
           theta_mean <- sum(patch_pops * theta_by_patch,na.rm=TRUE)/sum(patch_pops,na.rm=TRUE)
           theta_var <- sum(group_pops*(theta_by_group-theta_mean)^2)/sum(previous_pop)
@@ -374,7 +380,8 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
           # correlation between effective theta value and habitat quality
           cor_efftheta_q <- cor(efftheta_by_patch[patch_full],patch_locations$q[patch_full])
           # Moran's I for p
-          efftheta_Moran <- Moran.I(as.vector(efftheta_by_patch),weight=moran_weights,na.rm = TRUE)$observed
+          #efftheta_Moran <- Moran.I(as.vector(efftheta_by_patch),weight=moran_weights,na.rm = TRUE)$observed
+          efftheta_Moran <- NA
           # overall mean and variance of effective theta (value, not index) at the timestep
           efftheta_mean <- sum(previous_pop * Pij_thetaval_eff)/sum(previous_pop)
           efftheta_var <- sum(previous_pop*(Pij_thetaval_eff-efftheta_mean)^2)/sum(previous_pop)

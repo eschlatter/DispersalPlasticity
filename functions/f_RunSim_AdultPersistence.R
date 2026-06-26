@@ -25,6 +25,9 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   q <- patch_locations$q
   units(nav_rad) <- NULL
   
+  
+  patch_locations$vac_prob <- 0.5
+  
   connmat_size <- connmat_size_GB*1000*8 # in Mb
   job_mem <- jobmem_GB*1000 # in MB
   
@@ -90,15 +93,6 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   Pij_alpha_val <- v_alphas[Pij_alpha]
   Pij_theta_val <- v_thetas[Pij_theta]
   Pij_p <- matrix(p_by_group,byrow=TRUE,nrow=npatch,ncol=ngroups) # value, not index
-  # Pij_larvae <- matrix(nrow=npatch,ncol=ngroups) # track larvae produced by each cell of Pij (can remove if we're not doing this)
-  
-  # generate matrix of weights (inverse distance) to use in calculating Moran's I
-  # is this an okay distance function to use? I know it matters when doing the statistical test,
-  # but maybe as long as we use the same metric for all timesteps and simulations it's OK for comparing among them.
-  # I tried a few options (1/d, 1/d^2, 1/(1+d^2)) and the dynamics were quite similar.
-  # load(file=patchdist_file)
-  # moran_weights <- 1/(drop_units(patch_dists))
-  # diag(moran_weights) <- 0
   
   ## 6. Save input information
   metadata_list <- list(params=params,group_index=group_index,patch_locations=patch_locations,hab_file=hab_params$hab_file)
@@ -109,7 +103,7 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   df_i <- data.frame(t_i=rep(t_i,4),metric=NA,mean=NA,var=NA,q05=NA,q25=NA,median=NA,q75=NA,q95=NA,MoranI=NA,corr_q=NA)
   
   ###### total abundance
-  df_i[1,] <- data.frame(t_i=t_i,metric="abund",mean=NA,var=NA,q05=NA,q25=NA,median=sum(previous_pop),q75=NA,q95=NA,MoranI=NA,corr_q=NA)
+  df_i[1,] <- data.frame(t_i=t_i,metric="abund",mean=NA,var=NA,q05=NA,q25=NA,median=sum(previous_pop),q75=NA,q95=NA,corr_q=NA)
   
   patch_pops <- rowSums(previous_pop)
   patch_full <- which(patch_pops!=0)
@@ -120,9 +114,6 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   p_by_patch <- (previous_pop %*% p_by_group)/patch_pops # some of these might be NA
   # correlation between p and habitat quality
   cor_p_q <- cor(p_by_patch[patch_full],patch_locations$q[patch_full])
-  # Moran's I for p
-  #p_Moran <- Moran.I(as.vector(p_by_patch),weight=moran_weights,na.rm=TRUE)$observed
-  p_Moran <- NA
   # overall mean and variance of p (value, not index) at the timestep
   # p_median is a weighted median of p_by_group, weighted by group_pops
   p_quants <- as.numeric(Hmisc::wtd.quantile(x = p_by_group, weights = group_pops, probs = c(0.05,0.25,0.5,0.75,0.95)))
@@ -130,23 +121,20 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   p_var <- sum(group_pops*(p_by_group-p_mean)^2)/sum(previous_pop)
   df_i[2,] <- data.frame(t_i=t_i,metric="p",mean=p_mean,var=p_var,
                          q05=p_quants[1],q25=p_quants[2],median=p_quants[3],q75=p_quants[4],q95=p_quants[5],
-                         MoranI=p_Moran,corr_q=cor_p_q)
+                         corr_q=cor_p_q)
   
   ###### theta (fundamental)
   # mean value of theta in each patch (value, not index)
   theta_by_patch <- (previous_pop %*% theta_val_by_group)/patch_pops # some might be NA
   # correlation between theta and habitat quality
   cor_theta_q <- cor(theta_by_patch[patch_full],patch_locations$q[patch_full])
-  # Moran's I for theta
-  #theta_Moran <- Moran.I(as.vector(theta_by_patch),weight=moran_weights,na.rm=TRUE)$observed
-  theta_Moran <- NA
   # overall mean and variance of theta (value, not index) at the timestep
   theta_quants <- as.numeric(Hmisc::wtd.quantile(x = theta_val_by_group, weights = group_pops, probs = c(0.05,0.25,0.5,0.75,0.95)))
   theta_mean <- sum(patch_pops * theta_by_patch,na.rm=TRUE)/sum(patch_pops,na.rm=TRUE)
   theta_var <- sum(group_pops*(theta_by_group-theta_mean)^2)/sum(previous_pop)
   df_i[3,] <- data.frame(t_i=t_i,metric="theta",mean=theta_mean,var=theta_var,
                          q05=theta_quants[1],q25=theta_quants[2],median=theta_quants[3],q75=theta_quants[4],q95=theta_quants[5],
-                         MoranI=theta_Moran,corr_q=cor_theta_q)
+                         corr_q=cor_theta_q)
   
   ###### theta (effective)
   # a Pij matrix with effective theta value in each patch/grp
@@ -157,16 +145,13 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   efftheta_by_patch <- rowSums(previous_pop*Pij_thetaval_eff)/rowSums(previous_pop) # some might be NA
   # correlation between effective theta value and habitat quality
   cor_efftheta_q <- cor(efftheta_by_patch[patch_full],patch_locations$q[patch_full])
-  # Moran's I for p
-  #efftheta_Moran <- Moran.I(as.vector(efftheta_by_patch),weight=moran_weights,na.rm = TRUE)$observed
-  efftheta_Moran <- NA
   # overall mean and variance of effective theta (value, not index) at the timestep
   efftheta_quants <- as.numeric(Hmisc::wtd.quantile(x = Pij_thetaval_eff, weights = previous_pop, probs = c(0.05,0.25,0.5,0.75,0.95)))
   efftheta_mean <- sum(previous_pop * Pij_thetaval_eff)/sum(previous_pop)
   efftheta_var <- sum(previous_pop*(Pij_thetaval_eff-efftheta_mean)^2)/sum(previous_pop)
   df_i[4,] <- data.frame(t_i=t_i,metric="efftheta",mean=efftheta_mean,var=efftheta_var,
                          q05=efftheta_quants[1],q25=efftheta_quants[2],median=efftheta_quants[3],q75=efftheta_quants[4],q95=efftheta_quants[5],
-                         MoranI=efftheta_Moran,corr_q=cor_efftheta_q)
+                         corr_q=cor_efftheta_q)
   
   fwrite(df_i,file=paste0(output_file,"_raw.csv"),append=TRUE)
   
@@ -174,7 +159,6 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   interval_starttime <- proc.time()
   for(t_i in 2:nsteps){
     temp_pop[ ] <- 0 # reset temp_pop
-    # Pij_larvae[ ] <- 0
     
     patch_abunds_adult <- rowSums(previous_pop)
     fwrite(matrix(patch_abunds_adult,nrow=1),file=paste0(output_file,"_patch_abunds_adult.csv"),append=TRUE)
@@ -189,11 +173,6 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
         disturbed_anems <- as.numeric(which(patch_dists[,disturbance_center]<disturb_radius))
         # remove all residents of those anemones
         previous_pop[disturbed_anems,] <- 0
-        
-        # print what's happened
-        # print(paste0("t_i=",t_i,". Disturbance at anemone ",disturbance_center,", coords ",
-        #              paste(st_coordinates(sfc_patches[disturbance_center]),collapse=" ")))
-        # print(paste0("Disturbed anemones: ",paste0(disturbed_anems,collapse=" ")))
     }
     
     ################## Reproduction and Dispersal and Mutation ##################
@@ -211,7 +190,6 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
       # get the connectivity matrix among patches, given the group parameter values and patch-level q's
       # (and accounting for the patch population x per capita output b_i from each patch)
       
-      #print(g)
       # if it hasn't been imported from global.scratch yet
       if(is.null(all_conn_mats[[g]])){
         #print("importing")
@@ -261,23 +239,12 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
     
     # sample K (or current abundance, if <K) individuals per patch and distribute them among groups of parameter values
     # (with probability according to the current abundance of each group of param values in that patch)
-    # patch_abunds <- rowSums(temp_pop)
-    # for(i_patch in which(patch_abunds>0)){
-    #   survivors=rmultinom(n=1, # there are this many cells (i.e., combos of parameter values) for the patch
-    #                       size=min(patch_abunds[i_patch],patch_locations$K_i[i_patch]), # choose cells for min(abundance, K) survivors
-    #                       prob = temp_pop[i_patch,]) # probability of each cell being chosen depends on its current abundance)
-    #   new_pop[i_patch,] <- survivors
-    # }
-    
     patch_abunds <- rowSums(temp_pop)
     fwrite(matrix(patch_abunds,nrow=1),file=paste0(output_file,"_patch_abunds.csv"),append=TRUE)
     comp_results <- vapply(1:npatch,function(i) f_Competition(i_patch=i,patch_abunds=patch_abunds,patch_locations=patch_locations,
                                                               temp_pop=temp_pop,ngroups=ngroups),
                            integer(ngroups))
-    #comp_results <- mclapply(1:npatch,function(i) f_Competition(i,patch_abunds,patch_locations,temp_pop),mc.cores = numCores)
-    #new_pop <- do.call(rbind,comp_results)
     new_pop <- t(comp_results)
-    
     previous_pop <- new_pop
     
     ################## Output ##################
@@ -346,10 +313,10 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
       if(t_i %% output_thin == 0){
         if(sum(previous_pop)>0){
           
-          df_i <- data.frame(t_i=rep(t_i,5),metric=NA,mean=NA,var=NA,q05=NA,q25=NA,median=NA,q75=NA,q95=NA,MoranI=NA,corr_q=NA)
+          df_i <- data.frame(t_i=rep(t_i,5),metric=NA,mean=NA,var=NA,q05=NA,q25=NA,median=NA,q75=NA,q95=NA,corr_q=NA)
           
           ###### total abundance
-          df_i[1,] <- data.frame(t_i=t_i,metric="abund",mean=NA,var=NA,q05=NA,q25=NA,median=sum(previous_pop),q75=NA,q95=NA,MoranI=NA,corr_q=NA)
+          df_i[1,] <- data.frame(t_i=t_i,metric="abund",mean=NA,var=NA,q05=NA,q25=NA,median=sum(previous_pop),q75=NA,q95=NA,corr_q=NA)
           
           patch_pops <- rowSums(previous_pop)
           patch_full <- which(patch_pops!=0)
@@ -360,11 +327,7 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
           p_by_patch <- (previous_pop %*% p_by_group)/patch_pops # some of these might be NA
           p_val_by_patch <- (v_thetas[2]/v_thetas[1])^-p_by_patch
           # correlation between p and habitat quality
-          #cor_p_q <- cor(p_by_patch[patch_full],patch_locations$q[patch_full])
           cor_p_q <- cor(p_val_by_patch[patch_full],patch_locations$q[patch_full])
-          # Moran's I for p
-          #p_Moran <- Moran.I(as.vector(p_by_patch),weight=moran_weights,na.rm=TRUE)$observed
-          p_Moran <- NA
           # overall mean and variance of p (value, not index) at the timestep
           # p_median is a weighted median of p_by_group, weighted by group_pops
           p_quants <- as.numeric(Hmisc::wtd.quantile(x = p_by_group, weights = group_pops, probs = c(0.05,0.25,0.5,0.75,0.95)))
@@ -372,23 +335,20 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
           p_var <- sum(group_pops*(p_by_group-p_mean)^2)/sum(previous_pop)
           df_i[2,] <- data.frame(t_i=t_i,metric="p",mean=p_mean,var=p_var,
                                  q05=p_quants[1],q25=p_quants[2],median=p_quants[3],q75=p_quants[4],q95=p_quants[5],
-                                 MoranI=p_Moran,corr_q=cor_p_q)
+                                 corr_q=cor_p_q)
           
           ###### theta (fundamental)
           # mean value of theta in each patch (value, not index)
           theta_by_patch <- (previous_pop %*% theta_val_by_group)/patch_pops # some might be NA
           # correlation between theta and habitat quality
           cor_theta_q <- cor(theta_by_patch[patch_full],patch_locations$q[patch_full])
-          # Moran's I for theta
-          #theta_Moran <- Moran.I(as.vector(theta_by_patch),weight=moran_weights,na.rm=TRUE)$observed
-          theta_Moran <- NA
           # overall mean and variance of theta (value, not index) at the timestep
           theta_quants <- as.numeric(Hmisc::wtd.quantile(x = theta_val_by_group, weights = group_pops, probs = c(0.05,0.25,0.5,0.75,0.95)))
           theta_mean <- sum(patch_pops * theta_by_patch,na.rm=TRUE)/sum(patch_pops,na.rm=TRUE)
           theta_var <- sum(group_pops*(theta_by_group-theta_mean)^2)/sum(previous_pop)
           df_i[3,] <- data.frame(t_i=t_i,metric="theta",mean=theta_mean,var=theta_var,
                                  q05=theta_quants[1],q25=theta_quants[2],median=theta_quants[3],q75=theta_quants[4],q95=theta_quants[5],
-                                 MoranI=theta_Moran,corr_q=cor_theta_q)
+                                 corr_q=cor_theta_q)
           
           ###### theta (effective)
           # a Pij matrix with effective theta value in each patch/grp
@@ -399,22 +359,14 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
           efftheta_by_patch <- rowSums(previous_pop*Pij_thetaval_eff)/rowSums(previous_pop) # some might be NA
           # correlation between effective theta value and habitat quality
           cor_efftheta_q <- cor(efftheta_by_patch[patch_full],patch_locations$q[patch_full])
-          # Moran's I for p
-          #efftheta_Moran <- Moran.I(as.vector(efftheta_by_patch),weight=moran_weights,na.rm = TRUE)$observed
-          efftheta_Moran <- NA
           # overall mean and variance of effective theta (value, not index) at the timestep
           efftheta_quants <- as.numeric(Hmisc::wtd.quantile(x = Pij_thetaval_eff, weights = previous_pop, probs = c(0.05,0.25,0.5,0.75,0.95)))
           efftheta_mean <- sum(previous_pop * Pij_thetaval_eff)/sum(previous_pop)
           efftheta_var <- sum(previous_pop*(Pij_thetaval_eff-efftheta_mean)^2)/sum(previous_pop)
           df_i[4,] <- data.frame(t_i=t_i,metric="efftheta",mean=efftheta_mean,var=efftheta_var,
                                  q05=efftheta_quants[1],q25=efftheta_quants[2],median=efftheta_quants[3],q75=efftheta_quants[4],q95=efftheta_quants[5],
-                                 MoranI=efftheta_Moran,corr_q=cor_efftheta_q)
+                                 corr_q=cor_efftheta_q)
           
-          # corr_larvae_theta <- cor(colSums(Pij_larvae)[patch_full],theta_val_by_group) # we're storing this in the "corr_q" slot, but it's really correlation between larvae and theta!
-          # larvae_quants <- as.numeric(Hmisc::wtd.quantile(x = Pij_larvae, weights = previous_pop, probs = c(0.05,0.25,0.5,0.75,0.95)))
-          # df_i[5,] <- data.frame(t_i=t_i,metric="larval_abund",
-          #                        q05=larvae_quants[1],q25=larvae_quants[2],median=larvae_quants[3],q75=larvae_quants[4],q95=larvae_quants[5],
-          #                        MoranI=NA,corr_q=corr_larvae_theta)
           df_i[5,] <- data.frame(t_i=t_i,metric="larval_abund",mean=NA,var=NA,
                                  q05=NA,q25=NA,median=sum(patch_abunds),q75=NA,q95=NA,
                                  MoranI=NA,corr_q=NA)

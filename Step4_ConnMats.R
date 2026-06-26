@@ -1,30 +1,30 @@
 ## script to run that just generates the connectivity matrices and saves them to global scratch
-## use a bunch of cores, so this goes fast
 source('0_Setup.R')
 library(calculus)
+library(collapse)
 experiment_name <- "Exp3_20260528"
 experiment_folder <- paste0("experiments/",experiment_name)
-experiment_index <- read.csv(paste0(experiment_folder,"/experiment_index.csv"))
+experiment_index <- read.csv(paste0(experiment_folder,"/experiment_index_smallkern.csv"))
 load(paste0(experiment_folder,"/basemap_index.RData")) # basemap index
 
 # Create new folders in the project directory and MSI scratch directory
-temp_dir <- paste0("connmats_",experiment_name)
+temp_dir <- paste0("connmats_smallkern_",experiment_name)
 temp_path <- file.path("/scratch.global","schla103",temp_dir)
 if(!dir.exists(temp_path)) dir.create(temp_path)
 
 # identify which map we're on (as indexed by experiment_index)
-run_i <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+#run_i <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+run_i=5
 map_info <- experiment_index[run_i,]
 mapID_i <- experiment_index$mapID[run_i]
 if(!dir.exists(paste0(temp_path,"/map_",mapID_i))) dir.create(paste0(temp_path,"/map_",mapID_i))
-
 
 # params
 load(paste0(experiment_folder,"/params_",map_info$param_id,".RData"))
 list2env(x=params,envir=environment())
 
 # hab_params
-load(file=paste0(experiment_folder,"/habfiles2/habparams_",mapID_i,".RData")) 
+load(file=paste0(experiment_folder,"/habfiles/habparams_",mapID_i,".RData")) 
 list2env(x=hab_params,envir=environment()) 
 
 # load patch_dists
@@ -62,35 +62,37 @@ for(i in 1:nrow(eff_kern_df)){
   th_i <- eff_kern_df$theta_val[i]
   
   # off-the-map correction
-  vol_inmap <- integral(function(x,y,theta){(1/theta)*exp(-sqrt((centr_x-x)^2+(centr_y-y)^2)/theta)},
-                        bounds=map_bounds,
-                        params=list(theta=th_i),
-                        relTol=0.00001
-  )$value
+  vol_inmap <- max(integral(function(x,y,theta){(1/theta)*exp(-sqrt((centr_x-x)^2+(centr_y-y)^2)/theta)},
+                            bounds=map_bounds,
+                            params=list(theta=th_i),
+                            relTol=0.00001)$value,
+                   2*pi*th_i)
   eff_kern_df$offmap_corr[i] <- 1+(2*pi*th_i-vol_inmap)/vol_inmap
   
   # self-recruitment values
   vol_selfrecruit <- integral(function(r,theta){(1/th_i)*exp(-r/th_i)},
                               bounds=list(r=c(0,nav_rad),theta=c(0,2*pi)),
                               coordinates="polar",
-                              relTol=0.00001
+                              relTol=0.00001,
+                              method="divonne"
   )$value
   eff_kern_df$selfrecruit[i] <- vol_selfrecruit
 }
 
 ######### Make and save connectivity matrices ##########
 for(g in 1:nrow(group_index)){
-  # get the connectivity matrix among patches, given the group parameter values and patch-level q's
-  # (and accounting for the patch population x per capita output b_i from each patch)
-  
-  # calculate this matrix
-  ## This is what uses multiple cores: f_GetPlasticConnMat uses f_GetConnectivityMatrix_parallel
-  conn_mat <- f_GetConnMat(g,
-                           group_index,patch_locations,v_p,v_alphas,v_thetas,eff_kern_index,eff_kern_df,patch_dists,nav_rad,
-                           numCores=parallelly::availableCores())
-  # then store it
-  write_fst(as.data.frame(conn_mat),paste0(temp_path,"/map_",mapID_i,"/grp_",g),compress=0)
-  #saveRDS(object=conn_mat,file=paste0(saveto_folder,"/grp_",g,".rds"),compress=FALSE)
-  
+  if(!file.exists(paste0(temp_path,"/map_",mapID_i,"/grp_",g))){
+    # get the connectivity matrix among patches, given the group parameter values and patch-level q's
+    # (and accounting for the patch population x per capita output b_i from each patch)
+    
+    # calculate this matrix
+    ## This is what uses multiple cores: f_GetPlasticConnMat uses f_GetConnectivityMatrix_parallel
+    conn_mat <- f_GetConnMat(g,
+                             group_index,patch_locations,v_p,v_alphas,v_thetas,eff_kern_index,eff_kern_df,patch_dists,nav_rad,
+                             numCores=parallelly::availableCores())
+    # then store it
+    write_fst(qDF(conn_mat),paste0(temp_path,"/map_",mapID_i,"/grp_",g),compress=0)
+    #saveRDS(object=conn_mat,file=paste0(saveto_folder,"/grp_",g,".rds"),compress=FALSE)
+  }
 } # g
 

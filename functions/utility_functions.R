@@ -115,7 +115,8 @@ f_GenerateHabQual <- function(q_autocorr,target_dist='identity',plot_flag=FALSE,
   frac_map <- fracland(k=k,h=q_autocorr,binary=FALSE,plotflag=FALSE)
   frac_map <- frac_map[1:ny,1:nx] 
   # mask out non-habitat locations
-  frac_map[matrix(values(base_rast),nrow=ny,byrow=TRUE)==0] <- NA
+  frac_map[is.na(matrix(values(base_rast),nrow=ny,byrow=TRUE))] <- NA # if they're NA's
+  frac_map[matrix(values(base_rast),nrow=ny,byrow=TRUE)==0] <- NA # if they're zeros
   temp_rast <- rast(ext(base_rast), resolution=res(base_rast), crs = crs(base_rast))
   # convert to desired distribution of q values
   values(temp_rast) <- f_TransformDist(frac_map,target_dist)
@@ -218,7 +219,7 @@ f_GenerateK <- function(base_rast,K_range,K_autocorr,plot_flag=FALSE,popmap_file
 #   patch_dists
 #   K_rast
 f_SimPtsOnMap <- function(reef_sf=NULL,base_rast=NULL,n_anems=50,samp_type="random",inwater_dist=FALSE,
-                          plot_flag=FALSE,experiment_folder=NULL,basemap_id=NULL,popmap_id=NULL){
+                          plot_flag=FALSE,experiment_folder=NULL,basemap_id=NULL,popmap_id=NULL,marmap_transmat=NULL){
   basemap_file <- paste0(experiment_folder,"/b",basemap_id,"/base_b",basemap_id)
   load(paste0(basemap_file,".RData")) # load reef_sf, bathy_rast (also sfc_patches and patch_dists, but these will be overwritten)
   base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
@@ -239,16 +240,34 @@ f_SimPtsOnMap <- function(reef_sf=NULL,base_rast=NULL,n_anems=50,samp_type="rand
   sfc_patches <- sfc_patches[1:min(length(sfc_patches),n_anems)]
   
   # make patch_dists
-  patch_dists <- st_distance(sfc_patches)
-  patch_dists <- drop_units(patch_dists/1000) # again, for some reason this is much faster than converting directly
-  units(patch_dists) <- 'km'
+  if(inwater_dist==TRUE){
+    # first, remove any points that don't have depths in the bathymetry map (more rounding errors)
+    # this means the number of anemones may be slightly lower than the input n_anem
+    depths <- get.depth(marmap_transmat@history[[3]],x=st_coordinates(sfc_patches),locator=FALSE)
+    sfc_patches <- sfc_patches[!is.na(depths$depth)]
+    # calculate distances
+    anemone_dists <- lc.dist(marmap_transmat,st_coordinates(sfc_patches),res='dist',meters=TRUE) #distances are in km
+    anemone_dists_mat <- matrix(0,length(sfc_patches),length(sfc_patches)) # convert dist into matrix form
+    anemone_dists_mat[lower.tri(anemone_dists_mat,diag=FALSE)] <- anemone_dists
+    anemone_dists_mat[upper.tri(anemone_dists_mat)] <- t(anemone_dists_mat)[upper.tri(anemone_dists_mat)]
+    patch_dists <- anemone_dists_mat/1000
+    units(patch_dists) <- "km"
+  } else{
+    patch_dists <- st_distance(sfc_patches)
+    patch_dists <- drop_units(patch_dists/1000) # again, for some reason this is much faster than converting directly
+    units(patch_dists) <- 'km'
+  }
   
   # K_rast is 1 everywhere
   K_rast <- base_rast
   names(K_rast) <- "K"
   
   if(plot_flag==TRUE){
-    g <- ggplot(reef_sf)+geom_sf()+geom_sf(data=sfc_patches)+labs(title="Anemone locations")+theme(panel.background=element_rect(fill="lightblue"),panel.grid = element_blank())
+    g <- ggplot(reef_sf)+
+      geom_sf()+
+      geom_sf(data=sfc_patches)+
+      labs(title="Anemone locations")+
+      theme(panel.background=element_rect(fill="lightblue"),panel.grid = element_blank())
     print(g)
   }
   
@@ -274,26 +293,20 @@ f_get_patch_angle <- function(patch_dist){
   return(patch_angle)
 }
 
-# Inputs:
-#   nav_rad = navigation radius (in km).
-#   overlap_method: how to calculate discount for sites within nav_rad of each other.
-#     "simple" (divide by number of sites within nav_rad)
-#     or "complicated" (draw all the circles and calculate area of overlap. This is slow.)
-#   qmap_file, popmap_file: if both are given, load in from saved data.
-#   otherwise, q_rast, K_rast, patch_dists, sfc_patches, reef_sf, and hab_type must be given directly
-#   hab_file: output filepath
-# Outputs:
-#   
-f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_file=NULL,basemap_file=NULL,
-                          q_rast=NULL,K_rast=NULL,patch_dists=NULL,sfc_patches=NULL,reef_sf=NULL,hab_type=NULL,
-                          hab_file=NULL){
-  # load in data, if necessary
-  if(!is.null(qmap_file) & !is.null(popmap_file)){
-    #load(paste0(basemap_file,"/",qmap_file,".RData"))
-    load(paste0(basemap_file,"/",popmap_file,".RData")) # loads reef_sf,patch_dists,sfc_patches,hab_type
-    q_rast <- rast(paste0(basemap_file,"/",qmap_file,".tif")) # load q_rast
-    K_rast <- rast(paste0(basemap_file,"/",popmap_file,".tif")) # load K_rast
-  }
+
+f_MakeHabitat <- function(nav_rad,hab_type="points",
+                          qmap_file=NULL,popmap_file=NULL,hab_file=NULL,patchdist_file=NULL,
+                          qmap_id=NULL,popmap_id=NULL,hab_id=NULL,experiment_folder=NULL){
+  # load in data
+  if(!is.null(qmap_id)) qmap_file <- paste0(experiment_folder,"/b",basemap_id,"/set",set_id,"/qmap_b",basemap_id,"_q",qmap_id)
+  if(!is.null(popmap_id)) popmap_file <- paste0(experiment_folder,"/b",basemap_id,"/pop_b",basemap_id,"_p",popmap_id)
+  if(!is.null(hab_id)) hab_file <- paste0(experiment_folder,"/habfiles/habparams_",hab_id)
+  if(is.null(patchdist_file)) patchdist_file <- paste0(experiment_folder,"/b",basemap_id,"/patchdists_b",basemap_id,"_p",popmap_id,".RData")
+  
+  load(paste0(popmap_file,".RData")) # loads reef_sf,patch_dists,sfc_patches,hab_type
+  q_rast <- rast(paste0(qmap_file,".tif")) # load q_rast
+  K_rast <- rast(paste0(popmap_file,".tif")) # load K_rast
+  load(patchdist_file) # load patch_dists
   
   units(nav_rad) <- 'km'
   npatch <- length(sfc_patches)
@@ -313,140 +326,195 @@ f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_
   df_patches <- df_patches[,c("id","x","y","q","K")]
   df_patches$b <- f_q_to_b(df_patches$q) # calculate reproductive rate (b) from habitat quality (q)
   
-  ## make patch_angles
-  # these aren't actually angles; they're the fraction of the whole circle covered by the destination patch
-  # (so values from 0 to 1, not 0 to 2pi)
-  # # original method
-  # patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists[1:100,1:100])/(2*pi))
-  # patch_angles[is.nan(patch_angles)] <- 1
-  # # parallel method
-  # patch_angles <- matrix(unlist(mclapply(patch_dists,fn_get_patch_angle,mc.cores=parallelly::availableCores())),
-  #                        nrow=nrow(patch_dists))
-  # # approximation method
-  patch_angles <- (2*nav_rad)/(2*pi*patch_dists)
-  patch_angles[is.nan(patch_angles)] <- 1
-  patch_angles[drop_units(patch_angles)>1] <- 1
-  
   ## make overlap_discount
-  if(overlap_method=="complicated"){
-    # if patches aren't on a grid,
-    # find the overlap of each patch's basin of attraction with other basins
-    # first define the basins
-    circs=st_buffer(sfc_patches,dist=nav_rad) # nav_rad is specified in km
-    onecirc_area=st_area(circs[1,])
-    # then calculate the overlaps (this is slow; should use mclapply)
-    all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = parallelly::availableCores())
-    all_overlaps <- unlist(all_overlaps)
-    overlap_discount <- 1/(1+all_overlaps)
-  } else{
-    n_neighbors <- rowSums(patch_dists<nav_rad) # number of points within distance nav_rad of focal point (including focal point)
-    overlap_discount <- 1/n_neighbors
-  }
+  overlap_discount <- 1/rowSums(patch_dists<nav_rad)
   
   hab_params <- list(npatch=npatch,
                      patch_locations=df_patches,
-                     patch_dists=patch_dists,
-                     patch_angles=patch_angles,
                      overlap_discount=overlap_discount,
                      reef_sf=reef_sf,
                      sfc_patches=sfc_patches,
                      hab_type=hab_type,
                      nav_rad=nav_rad,
-                     hab_file=hab_file)
+                     mapID=hab_id)
   
-  if(!is.null(hab_file)){
-    save(hab_params,file=paste0(basemap_file,"/",hab_file,".RData"))
-    writeRaster(hab_rast,filename=paste0(basemap_file,"/",hab_file,".tif"),overwrite=TRUE)
-  }
-  return(hab_params) # note that this doesn't include hab_rast, so if you want this later, you'll need to load it from hab_params$hab_file
+  save(hab_params,file=paste0(hab_file,".RData"))
+  writeRaster(hab_rast,filename=paste0(hab_file,".tif"),overwrite=TRUE)
 }
 
-# Inputs:
-#   nav_rad = navigation radius (in km).
-#   overlap_method: how to calculate discount for sites within nav_rad of each other.
-#     "simple" (divide by number of sites within nav_rad)
-#     or "complicated" (draw all the circles and calculate area of overlap. This is slow.)
-#   qmap_file, popmap_file: if both are given, load in from saved data.
-#   otherwise, q_rast, K_rast, patch_dists, sfc_patches, reef_sf, and hab_type must be given directly
-#   hab_file: output filepath
-# Outputs:
+# # Inputs:
+# #   nav_rad = navigation radius (in km).
+# #   overlap_method: how to calculate discount for sites within nav_rad of each other.
+# #     "simple" (divide by number of sites within nav_rad)
+# #     or "complicated" (draw all the circles and calculate area of overlap. This is slow.)
+# #   qmap_file, popmap_file: if both are given, load in from saved data.
+# #   otherwise, q_rast, K_rast, patch_dists, sfc_patches, reef_sf, and hab_type must be given directly
+# #   hab_file: output filepath
+# # Outputs:
+# #   
+# f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_file=NULL,basemap_file=NULL,
+#                           q_rast=NULL,K_rast=NULL,patch_dists=NULL,sfc_patches=NULL,reef_sf=NULL,hab_type=NULL,
+#                           hab_file=NULL){
+#   # load in data, if necessary
+#   if(!is.null(qmap_file) & !is.null(popmap_file)){
+#     #load(paste0(basemap_file,"/",qmap_file,".RData"))
+#     load(paste0(basemap_file,"/",popmap_file,".RData")) # loads reef_sf,patch_dists,sfc_patches,hab_type
+#     q_rast <- rast(paste0(basemap_file,"/",qmap_file,".tif")) # load q_rast
+#     K_rast <- rast(paste0(basemap_file,"/",popmap_file,".tif")) # load K_rast
+#   }
 #   
-f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_file=NULL,basemap_file=NULL,
-                          q_rast=NULL,K_rast=NULL,patch_dists=NULL,sfc_patches=NULL,reef_sf=NULL,hab_type=NULL,
-                          hab_file=NULL){
-  # load in data, if necessary
-  if(!is.null(qmap_file) & !is.null(popmap_file)){
-    #load(paste0(basemap_file,"/",qmap_file,".RData"))
-    load(paste0(basemap_file,"/",popmap_file,".RData")) # loads reef_sf,patch_dists,sfc_patches,hab_type
-    q_rast <- rast(paste0(basemap_file,"/",qmap_file,".tif")) # load q_rast
-    K_rast <- rast(paste0(basemap_file,"/",popmap_file,".tif")) # load K_rast
-  }
-  
-  units(nav_rad) <- 'km'
-  npatch <- length(sfc_patches)
-  
-  ## put q_rast and K_rast together
-  hab_rast <- c(q_rast,K_rast)
-  
-  ## create df_patches (important: ID should be in the same order as in sfc_patches, or distance matrix will be wrong)
-  q_vect <- terra::extract(hab_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)
-  K_vect <- terra::extract(hab_rast$K,vect(sfc_patches),xy=TRUE,search_radius=500)
-  patch_coords <- st_coordinates(sfc_patches)
-  df_patches <- cbind(q_vect[,c("ID","q")],patch_coords)
-  df_patches$K <- K_vect$K[df_patches$ID]
-  df_patches$id <- df_patches$ID
-  df_patches$x <- df_patches$X
-  df_patches$y <- df_patches$Y
-  df_patches <- df_patches[,c("id","x","y","q","K")]
-  df_patches$b <- f_q_to_b(df_patches$q) # calculate reproductive rate (b) from habitat quality (q)
-  
-  ## make patch_angles
-  # these aren't actually angles; they're the fraction of the whole circle covered by the destination patch
-  # (so values from 0 to 1, not 0 to 2pi)
-  # # original method
-  # patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists[1:100,1:100])/(2*pi))
-  # patch_angles[is.nan(patch_angles)] <- 1
-  # # parallel method
-  # patch_angles <- matrix(unlist(mclapply(patch_dists,fn_get_patch_angle,mc.cores=parallelly::availableCores())),
-  #                        nrow=nrow(patch_dists))
-  # # approximation method
-  patch_angles <- (2*nav_rad)/(2*pi*patch_dists)
-  patch_angles[is.nan(patch_angles)] <- 1
-  patch_angles[drop_units(patch_angles)>1] <- 1
-  
-  ## make overlap_discount
-  if(overlap_method=="complicated"){
-    # if patches aren't on a grid,
-    # find the overlap of each patch's basin of attraction with other basins
-    # first define the basins
-    circs=st_buffer(sfc_patches,dist=nav_rad) # nav_rad is specified in km
-    onecirc_area=st_area(circs[1,])
-    # then calculate the overlaps (this is slow; should use mclapply)
-    all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = parallelly::availableCores())
-    all_overlaps <- unlist(all_overlaps)
-    overlap_discount <- 1/(1+all_overlaps)
-  } else{
-    n_neighbors <- rowSums(patch_dists<nav_rad) # number of points within distance nav_rad of focal point (including focal point)
-    overlap_discount <- 1/n_neighbors
-  }
-  
-  hab_params <- list(npatch=npatch,
-                     patch_locations=df_patches,
-                     patch_dists=patch_dists,
-                     patch_angles=patch_angles,
-                     overlap_discount=overlap_discount,
-                     reef_sf=reef_sf,
-                     sfc_patches=sfc_patches,
-                     hab_type=hab_type,
-                     nav_rad=nav_rad,
-                     hab_file=hab_file)
-  
-  if(!is.null(hab_file)){
-    save(hab_params,file=paste0(basemap_file,"/",hab_file,".RData"))
-    writeRaster(hab_rast,filename=paste0(basemap_file,"/",hab_file,".tif"),overwrite=TRUE)
-  }
-  return(hab_params) # note that this doesn't include hab_rast, so if you want this later, you'll need to load it from hab_params$hab_file
-}
+#   units(nav_rad) <- 'km'
+#   npatch <- length(sfc_patches)
+#   
+#   ## put q_rast and K_rast together
+#   hab_rast <- c(q_rast,K_rast)
+#   
+#   ## create df_patches (important: ID should be in the same order as in sfc_patches, or distance matrix will be wrong)
+#   q_vect <- terra::extract(hab_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)
+#   K_vect <- terra::extract(hab_rast$K,vect(sfc_patches),xy=TRUE,search_radius=500)
+#   patch_coords <- st_coordinates(sfc_patches)
+#   df_patches <- cbind(q_vect[,c("ID","q")],patch_coords)
+#   df_patches$K <- K_vect$K[df_patches$ID]
+#   df_patches$id <- df_patches$ID
+#   df_patches$x <- df_patches$X
+#   df_patches$y <- df_patches$Y
+#   df_patches <- df_patches[,c("id","x","y","q","K")]
+#   df_patches$b <- f_q_to_b(df_patches$q) # calculate reproductive rate (b) from habitat quality (q)
+#   
+#   ## make patch_angles
+#   # these aren't actually angles; they're the fraction of the whole circle covered by the destination patch
+#   # (so values from 0 to 1, not 0 to 2pi)
+#   # # original method
+#   # patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists[1:100,1:100])/(2*pi))
+#   # patch_angles[is.nan(patch_angles)] <- 1
+#   # # parallel method
+#   # patch_angles <- matrix(unlist(mclapply(patch_dists,fn_get_patch_angle,mc.cores=parallelly::availableCores())),
+#   #                        nrow=nrow(patch_dists))
+#   # # approximation method
+#   patch_angles <- (2*nav_rad)/(2*pi*patch_dists)
+#   patch_angles[is.nan(patch_angles)] <- 1
+#   patch_angles[drop_units(patch_angles)>1] <- 1
+#   
+#   ## make overlap_discount
+#   if(overlap_method=="complicated"){
+#     # if patches aren't on a grid,
+#     # find the overlap of each patch's basin of attraction with other basins
+#     # first define the basins
+#     circs=st_buffer(sfc_patches,dist=nav_rad) # nav_rad is specified in km
+#     onecirc_area=st_area(circs[1,])
+#     # then calculate the overlaps (this is slow; should use mclapply)
+#     all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = parallelly::availableCores())
+#     all_overlaps <- unlist(all_overlaps)
+#     overlap_discount <- 1/(1+all_overlaps)
+#   } else{
+#     n_neighbors <- rowSums(patch_dists<nav_rad) # number of points within distance nav_rad of focal point (including focal point)
+#     overlap_discount <- 1/n_neighbors
+#   }
+#   
+#   hab_params <- list(npatch=npatch,
+#                      patch_locations=df_patches,
+#                      patch_dists=patch_dists,
+#                      patch_angles=patch_angles,
+#                      overlap_discount=overlap_discount,
+#                      reef_sf=reef_sf,
+#                      sfc_patches=sfc_patches,
+#                      hab_type=hab_type,
+#                      nav_rad=nav_rad,
+#                      hab_file=hab_file)
+#   
+#   if(!is.null(hab_file)){
+#     save(hab_params,file=paste0(basemap_file,"/",hab_file,".RData"))
+#     writeRaster(hab_rast,filename=paste0(basemap_file,"/",hab_file,".tif"),overwrite=TRUE)
+#   }
+#   return(hab_params) # note that this doesn't include hab_rast, so if you want this later, you'll need to load it from hab_params$hab_file
+# }
+# 
+# # Inputs:
+# #   nav_rad = navigation radius (in km).
+# #   overlap_method: how to calculate discount for sites within nav_rad of each other.
+# #     "simple" (divide by number of sites within nav_rad)
+# #     or "complicated" (draw all the circles and calculate area of overlap. This is slow.)
+# #   qmap_file, popmap_file: if both are given, load in from saved data.
+# #   otherwise, q_rast, K_rast, patch_dists, sfc_patches, reef_sf, and hab_type must be given directly
+# #   hab_file: output filepath
+# # Outputs:
+# #   
+# f_MakeHabitat <- function(nav_rad,overlap_method="simple",qmap_file=NULL,popmap_file=NULL,basemap_file=NULL,
+#                           q_rast=NULL,K_rast=NULL,patch_dists=NULL,sfc_patches=NULL,reef_sf=NULL,hab_type=NULL,
+#                           hab_file=NULL){
+#   # load in data, if necessary
+#   if(!is.null(qmap_file) & !is.null(popmap_file)){
+#     #load(paste0(basemap_file,"/",qmap_file,".RData"))
+#     load(paste0(basemap_file,"/",popmap_file,".RData")) # loads reef_sf,patch_dists,sfc_patches,hab_type
+#     q_rast <- rast(paste0(basemap_file,"/",qmap_file,".tif")) # load q_rast
+#     K_rast <- rast(paste0(basemap_file,"/",popmap_file,".tif")) # load K_rast
+#   }
+#   
+#   units(nav_rad) <- 'km'
+#   npatch <- length(sfc_patches)
+#   
+#   ## put q_rast and K_rast together
+#   hab_rast <- c(q_rast,K_rast)
+#   
+#   ## create df_patches (important: ID should be in the same order as in sfc_patches, or distance matrix will be wrong)
+#   q_vect <- terra::extract(hab_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)
+#   K_vect <- terra::extract(hab_rast$K,vect(sfc_patches),xy=TRUE,search_radius=500)
+#   patch_coords <- st_coordinates(sfc_patches)
+#   df_patches <- cbind(q_vect[,c("ID","q")],patch_coords)
+#   df_patches$K <- K_vect$K[df_patches$ID]
+#   df_patches$id <- df_patches$ID
+#   df_patches$x <- df_patches$X
+#   df_patches$y <- df_patches$Y
+#   df_patches <- df_patches[,c("id","x","y","q","K")]
+#   df_patches$b <- f_q_to_b(df_patches$q) # calculate reproductive rate (b) from habitat quality (q)
+#   
+#   ## make patch_angles
+#   # these aren't actually angles; they're the fraction of the whole circle covered by the destination patch
+#   # (so values from 0 to 1, not 0 to 2pi)
+#   # # original method
+#   # patch_angles <- suppressWarnings(2*asin(nav_rad/patch_dists[1:100,1:100])/(2*pi))
+#   # patch_angles[is.nan(patch_angles)] <- 1
+#   # # parallel method
+#   # patch_angles <- matrix(unlist(mclapply(patch_dists,fn_get_patch_angle,mc.cores=parallelly::availableCores())),
+#   #                        nrow=nrow(patch_dists))
+#   # # approximation method
+#   patch_angles <- (2*nav_rad)/(2*pi*patch_dists)
+#   patch_angles[is.nan(patch_angles)] <- 1
+#   patch_angles[drop_units(patch_angles)>1] <- 1
+#   
+#   ## make overlap_discount
+#   if(overlap_method=="complicated"){
+#     # if patches aren't on a grid,
+#     # find the overlap of each patch's basin of attraction with other basins
+#     # first define the basins
+#     circs=st_buffer(sfc_patches,dist=nav_rad) # nav_rad is specified in km
+#     onecirc_area=st_area(circs[1,])
+#     # then calculate the overlaps (this is slow; should use mclapply)
+#     all_overlaps <- mclapply(1:npatch,function(i) f_FindOverlapAreas(i,circs,onecirc_area),mc.cores = parallelly::availableCores())
+#     all_overlaps <- unlist(all_overlaps)
+#     overlap_discount <- 1/(1+all_overlaps)
+#   } else{
+#     n_neighbors <- rowSums(patch_dists<nav_rad) # number of points within distance nav_rad of focal point (including focal point)
+#     overlap_discount <- 1/n_neighbors
+#   }
+#   
+#   hab_params <- list(npatch=npatch,
+#                      patch_locations=df_patches,
+#                      patch_dists=patch_dists,
+#                      patch_angles=patch_angles,
+#                      overlap_discount=overlap_discount,
+#                      reef_sf=reef_sf,
+#                      sfc_patches=sfc_patches,
+#                      hab_type=hab_type,
+#                      nav_rad=nav_rad,
+#                      hab_file=hab_file)
+#   
+#   if(!is.null(hab_file)){
+#     save(hab_params,file=paste0(basemap_file,"/",hab_file,".RData"))
+#     writeRaster(hab_rast,filename=paste0(basemap_file,"/",hab_file,".tif"),overwrite=TRUE)
+#   }
+#   return(hab_params) # note that this doesn't include hab_rast, so if you want this later, you'll need to load it from hab_params$hab_file
+# }
 
 # function to calculate reproductive rate (b) from habitat quality (q)
 # right now this is boring, but maybe we'll want it to do something more interesting at some point

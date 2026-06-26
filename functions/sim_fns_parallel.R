@@ -438,7 +438,8 @@ f_GetConnMat <- function(g,group_index,patch_locations,v_p,v_alphas,v_thetas,eff
     # Evaluate volume under kernel in a circle of radius nav_rad around destination site
     cm_i <- pi*nav_rad^2*dgamma(patch_dists[,i],shape=alpha[i],scale=theta[i])
     # Improve volume estimate for self-recruitment value
-    cm_i[i] <- eff_kern_df$selfrecruit[kernparam_rows[i]]
+    toobigs <- which(cm_i>eff_kern_df$selfrecruit[kernparam_rows[i]])
+    cm_i[toobigs] <- eff_kern_df$selfrecruit[kernparam_rows[i]]
     # Do all three steps below in one
     cm_i <- (cm_i*patch_locations$overlap_discount)*eff_kern_df$offmap_corr[kernparam_rows[i]]/(2*pi*theta[i])
     # # Divide by 2pitheta so all integrals sum to one

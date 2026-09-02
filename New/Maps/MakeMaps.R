@@ -1,26 +1,30 @@
-.libPaths("/projects/standard/mrunj/shared/Rlibs_schla103")
-source("New/functions.R")
+.libPaths("/projects/standard/mrunj/shared/Rlib_schla103")
+library(sf)
+#library(raster)
 library(data.table)
 library(terra)
-library(raster)
-library(sf)
 library(ggplot2)
 library(ggspatial)
 library(dplyr)
+source("New/functions.R")
 
 experiment_folder <- "New/Maps"
 
-# Make indices for basemaps, popmaps, and qmaps. Each time a new one is generated, put it in the index.
-index_basemaps <- data.frame(basemapID=integer(),description=character(),area_km2=double())
-fwrite(index_basemaps,file="New/Maps/index_basemaps.csv")
-
-index_popmaps <- data.frame(popmapID=integer(),basemapID=integer(),description=character(),density=double(),npatch=integer())
-fwrite(index_popmaps,file="New/Maps/index_popmaps.csv")
-
-index_qmaps <- data.frame(qmapID=integer(),basemapID=integer(),description=character(),
-                          h=double(),target_dist=character(),
-                          range=double(),sill=double(),SSErr=double(),model=character())
-fwrite(index_qmaps,file="New/Maps/index_qmaps.csv")
+# # Make indices for basemaps, popmaps, and qmaps. Each time a new one is generated, put it in the index.
+# index_basemaps <- data.frame(basemapID=integer(),description=character(),area_km2=double())
+# fwrite(index_basemaps,file="New/Maps/index_basemaps.csv")
+# 
+# index_popmaps <- data.frame(popmapID=integer(),basemapID=integer(),description=character(),density=double(),npatch=integer())
+# fwrite(index_popmaps,file="New/Maps/index_popmaps.csv")
+# 
+# index_qmaps <- data.frame(qmapID=integer(),basemapID=integer(),description=character(),
+#                           h=double(),target_dist=character(),
+#                           range=double(),sill=double(),SSErr=double(),model=character())
+# fwrite(index_qmaps,file="New/Maps/index_qmaps.csv")
+# 
+# index_habs <- data.frame(hab_id=integer(),basemap_id=integer(),qmap_id=integer(),
+#                          popmap_id=integer(),npatch=integer(),q_autocorr_scale=double())
+# fwrite(index_habs,file=paste0(experiment_folder,"/index_habs.csv"),append = TRUE)
 
 #### b1: 5x5km, uniform ####
 basemapID=1
@@ -139,7 +143,23 @@ index_qmaps <- data.frame(qmapID=qmapID,basemapID=basemapID,description="strong 
                           SSErr=q_out$vgm_fit$SSErr,model=q_out$vgm_fit$model)
 fwrite(index_qmaps,file="New/Maps/index_qmaps.csv",append=TRUE)
 
-
+# q=0.5 everywhere
+# constant q value
+qmapID <- max(read.csv("New/Maps/index_qmaps.csv")$qmap_id,0)+1
+h=NA
+target_dist=NA
+basemap_file <- paste0(experiment_folder,"/b",basemapID,"/base_b",basemapID)
+base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+temp_rast <- 0.5*base_rast
+q_rast <- c(base_rast,temp_rast)
+names(q_rast) <- c("reef","q")
+# save
+writeRaster(q_rast,filename=paste0(experiment_folder,"/b",basemapID,"/qmap_b",basemapID,"_q",qmapID,".tif"),overwrite=TRUE)
+index_qmaps <- data.frame(qmap_id=qmapID,basemap_id=basemapID,description="same habitat quality (0.5) everywhere, 5x5km",
+                          h=NA,target_dist=NA,
+                          range=NA,sill=NA,
+                          SSErr=NA,model=NA)
+fwrite(index_qmaps,file="New/Maps/index_qmaps.csv",append=TRUE)
 
 #### b2: 1x25km, uniform ####
 basemapID=2
@@ -399,11 +419,186 @@ index_qmaps <- data.frame(qmapID=qmapID,basemapID=basemapID,description="same ha
 fwrite(index_qmaps,file="New/Maps/index_qmaps.csv",append=TRUE)
 
 
+# ##### Add min_dist and max_dist to the first 7 popmap files -- didn't do it when they were made.
+# #I've updated the function now so it'll do it when they're generated.
+# index_popmaps <- read.csv(file="New/Maps/index_popmaps.csv")
+# for(i in 1:nrow(index_popmaps)){
+#   row_i <- index_popmaps[i,]
+#   # load patchdists
+#   load(paste0("New/Maps/b",row_i$basemap_id,"/patchdists_b",row_i$basemap_id,"_p",row_i$popmap_id,".RData"))
+#   max_dist <- max(patch_dists)
+#   min_dist <- min(patch_dists)
+#   # load pop.RData
+#   load(paste0("New/Maps/b",row_i$basemap_id,"/pop_b",row_i$basemap_id,"_p",row_i$popmap_id,".RData"))
+#   save(reef_sf,sfc_patches,hab_type,basemap_file,min_dist,max_dist,
+#        file=paste0("New/Maps/b",row_i$basemap_id,"/pop_b",row_i$basemap_id,"_p",row_i$popmap_id,".RData"))
+# }
 
+#### b5: 5x5km, squares in the corners ####
+basemapID=5
+x_dist=5000
+y_dist=5000
+resol=c(10,10)
+corner_length <- 1000 # side length of the corner squares, in m
+
+# base_rast
+base_rast <- rast(xmin=250000,xmax=250000+x_dist,ymin=0,ymax=y_dist,crs="EPSG:32631",resol=resol)
+nx=ncol(base_rast)
+ny=nrow(base_rast)
+base_mat <- matrix(0,nrow=ny,ncol=nx)
+corner_length_rast_x <- corner_length/resol[1]
+corner_length_rast_y <- corner_length/resol[2]
+base_mat[1:corner_length_rast_y,1:corner_length_rast_x] <- 1
+base_mat[((ny-corner_length_rast_y):ny),((nx-corner_length_rast_x):nx)] <- 1
+values(base_rast) <- base_mat
+
+# reef_sf
+bb <- as.numeric(ext(base_rast)[c(1,3,2,4)])
+corner1 <- st_sfc(st_polygon(list(rbind(c(bb[1],bb[4]), # xmin, ymax
+                                        c(bb[1]+corner_length,bb[4]),
+                                        c(bb[1]+corner_length,bb[4]-corner_length),
+                                        c(bb[1],bb[4]-corner_length),
+                                        c(bb[1],bb[4])))),crs="EPSG:32631")
+corner2 <- st_sfc(st_polygon(list(rbind(c(bb[3],bb[2]), # xmax,ymin
+                                        c(bb[3]-corner_length,bb[2]),
+                                        c(bb[3]-corner_length,bb[2]+corner_length),
+                                        c(bb[3],bb[2]+corner_length),
+                                        c(bb[3],bb[2])))),crs="EPSG:32631")
+reef_sf <- st_sf(st_union(corner1,corner2),crs="EPSG:32631")
+patch_dists <- NULL
+sfc_patches <- NULL
+bathy_rast <- NULL
+
+ggplot()+
+#  ggspatial::layer_spatial(base_rast)+
+  geom_sf(data=reef_sf)
+
+dir.create(path=paste0(experiment_folder,"/b",basemapID),recursive=TRUE)
+save(reef_sf,patch_dists,sfc_patches,bathy_rast,file=paste0(experiment_folder,"/b",basemapID,"/base_b",basemapID,".RData"))
+writeRaster(base_rast,filename=paste0(experiment_folder,"/b",basemapID,"/base_b",basemapID,".tif"),overwrite=TRUE)
+
+index_basemaps <- data.frame(basemap_id=basemapID,description="5x5km corner patches",area_km2=2)
+fwrite(index_basemaps,file="New/Maps/index_basemaps.csv",append=TRUE)
+
+##### b5 popmaps #####
+# 1: full-density (800 anems/km2)
+popmapID=max(read.csv("New/Maps/index_popmaps.csv")$popmap_id,0)+1
+pts_out <- f_SimPtsOnMap(n_anems=2*800,inwater_dist=FALSE,samp_type = "random",plot_flag=FALSE,
+                         experiment_folder=experiment_folder,basemap_id=basemapID,popmap_id=popmapID)
+index_popmaps <- data.frame(popmap_id=popmapID,basemap_id=basemapID,
+                            description="full density",density=800,npatch=1600)
+fwrite(index_popmaps,file="New/Maps/index_popmaps.csv",append=TRUE)
+
+##### b5 Qmaps #####
+# q=0.5 everywhere
+qmapID <- max(read.csv("New/Maps/index_qmaps.csv")$qmap_id,0)+1
+h=NA
+target_dist=NA
+basemap_file <- paste0(experiment_folder,"/b",basemapID,"/base_b",basemapID)
+base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+temp_rast <- 0.5*base_rast
+q_rast <- c(base_rast,temp_rast)
+names(q_rast) <- c("reef","q")
+# save
+writeRaster(q_rast,filename=paste0(experiment_folder,"/b",basemapID,"/qmap_b",basemapID,"_q",qmapID,".tif"),overwrite=TRUE)
+index_qmaps <- data.frame(qmap_id=qmapID,basemap_id=basemapID,description="q=0.5 everywhere, 5x5km corners",
+                          h=NA,target_dist=NA,
+                          range=NA,sill=NA,
+                          SSErr=NA,model=NA)
+fwrite(index_qmaps,file="New/Maps/index_qmaps.csv",append=TRUE)
+
+# 1: no autocorrelation
+qmapID <- max(read.csv("New/Maps/index_qmaps.csv")$qmap_id,0)+1
+h=-2
+target_dist="identity"
 q_out <- f_GenerateHabQual(q_autocorr=h,target_dist=target_dist,plot_flag=TRUE,
                            experiment_folder=experiment_folder,basemap_id=basemapID,qmap_id=qmapID)
 
-index_qmaps <- data.frame(qmapID=qmapID,basemapID=basemapID,description="(supposedly) low autocorrelation, medium Kimbe",
+index_qmaps <- data.frame(qmap_id=qmapID,basemap_id=basemapID,description="white noise",
+                          h=h,target_dist=target_dist,
+                          range=q_out$vgm_fit$range,sill=q_out$vgm_fit$sill,
+                          SSErr=q_out$vgm_fit$SSErr,model=q_out$vgm_fit$model)
+fwrite(index_qmaps,file="New/Maps/index_qmaps.csv",append=TRUE)
+
+#### b6: 1x25km, 5 regular patches of length 1.5km ####
+basemapID=6
+x_dist=1000
+y_dist=25000
+resol=c(10,10)
+patch_length <- 1500 # length of the habitable patches, in m
+patch_num <- 5
+gap_length <- (y_dist-(patch_length*patch_num))/(patch_num-1)
+
+# base_rast
+base_rast <- rast(xmin=250000,xmax=250000+x_dist,ymin=0,ymax=y_dist,crs="EPSG:32631",resol=resol)
+nx=ncol(base_rast)
+ny=nrow(base_rast)
+base_mat <- matrix(0,nrow=ny,ncol=nx)
+patch_length_rast <- patch_length/resol[2]
+gap_length_rast <- gap_length/resol[2]
+
+for(i in 1:patch_num){
+  base_mat[(1+(i-1)*(patch_length_rast+gap_length_rast)):(((i-1)*(patch_length_rast+gap_length_rast))+patch_length_rast),1:nx] <- 1
+  }
+values(base_rast) <- base_mat
+
+# reef_sf
+basemap_stars <- stars::st_as_stars(base_rast[[1]])
+basemap_contour <- stars::st_contour(basemap_stars,breaks=c(0.5))
+reef_sf <- basemap_contour[basemap_contour$Min>0,] # pick out just the reef part for the shapefile
+areareef <- st_area(reef_sf)
+units(areareef) <- "km^2"
+
+ggplot()+
+  ggspatial::layer_spatial(base_rast)+
+  geom_sf(data=reef_sf,alpha=0.1,color='white')
+
+patch_dists <- NULL
+sfc_patches <- NULL
+bathy_rast <- NULL
+
+dir.create(path=paste0(experiment_folder,"/b",basemapID),recursive=TRUE)
+save(reef_sf,patch_dists,sfc_patches,bathy_rast,file=paste0(experiment_folder,"/b",basemapID,"/base_b",basemapID,".RData"))
+writeRaster(base_rast,filename=paste0(experiment_folder,"/b",basemapID,"/base_b",basemapID,".tif"),overwrite=TRUE)
+
+index_basemaps <- data.frame(basemap_id=basemapID,description="1x25km regular patches (5, 1.5km each)",area_km2=as.numeric(areareef))
+fwrite(index_basemaps,file="New/Maps/index_basemaps.csv",append=TRUE)
+
+##### b6 popmaps #####
+# 1: full-density (800 anems/km2)
+popmapID=max(read.csv("New/Maps/index_popmaps.csv")$popmap_id,0)+1
+pts_out <- f_SimPtsOnMap(n_anems=round(as.numeric(areareef)*800),inwater_dist=FALSE,samp_type = "random",plot_flag=FALSE,
+                         experiment_folder=experiment_folder,basemap_id=basemapID,popmap_id=popmapID)
+index_popmaps <- data.frame(popmap_id=popmapID,basemap_id=basemapID,
+                            description="full density",density=800,npatch=round(as.numeric(areareef)*800))
+fwrite(index_popmaps,file="New/Maps/index_popmaps.csv",append=TRUE)
+
+##### b6 Qmaps #####
+# q=0.5 everywhere
+qmapID <- max(read.csv("New/Maps/index_qmaps.csv")$qmap_id,0)+1
+h=NA
+target_dist=NA
+basemap_file <- paste0(experiment_folder,"/b",basemapID,"/base_b",basemapID)
+base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
+temp_rast <- 0.5*base_rast
+q_rast <- c(base_rast,temp_rast)
+names(q_rast) <- c("reef","q")
+# save
+writeRaster(q_rast,filename=paste0(experiment_folder,"/b",basemapID,"/qmap_b",basemapID,"_q",qmapID,".tif"),overwrite=TRUE)
+index_qmaps <- data.frame(qmap_id=qmapID,basemap_id=basemapID,description="q=0.5 everywhere, 1x25km patches",
+                          h=NA,target_dist=NA,
+                          range=NA,sill=NA,
+                          SSErr=NA,model=NA)
+fwrite(index_qmaps,file="New/Maps/index_qmaps.csv",append=TRUE)
+
+# 1: no autocorrelation
+qmapID <- max(read.csv("New/Maps/index_qmaps.csv")$qmap_id,0)+1
+h=-2
+target_dist="identity"
+q_out <- f_GenerateHabQual(q_autocorr=h,target_dist=target_dist,plot_flag=TRUE,
+                           experiment_folder=experiment_folder,basemap_id=basemapID,qmap_id=qmapID)
+q_out$vgm_fit
+index_qmaps <- data.frame(qmap_id=qmapID,basemap_id=basemapID,description="white noise, 1x25km patches",
                           h=h,target_dist=target_dist,
                           range=q_out$vgm_fit$range,sill=q_out$vgm_fit$sill,
                           SSErr=q_out$vgm_fit$SSErr,model=q_out$vgm_fit$model)

@@ -140,6 +140,9 @@ f_SimPtsOnMap <- function(reef_sf=NULL,base_rast=NULL,n_anems=50,samp_type="rand
     units(patch_dists) <- 'km'
   }
   
+  max_dist <- max(patch_dists)
+  min_dist <- min(patch_dists)
+  
   # K_rast is 1 everywhere
   K_rast <- base_rast
   names(K_rast) <- "K"
@@ -156,7 +159,7 @@ f_SimPtsOnMap <- function(reef_sf=NULL,base_rast=NULL,n_anems=50,samp_type="rand
   ## output
   hab_type="points"
   if(!is.null(popmap_id)){
-    save(reef_sf,sfc_patches,hab_type,basemap_file,
+    save(reef_sf,sfc_patches,hab_type,basemap_file,min_dist,max_dist,
          file=paste0(experiment_folder,"/b",basemap_id,"/pop_b",basemap_id,"_p",popmap_id,".RData"))
     save(patch_dists,file=paste0(experiment_folder,"/b",basemap_id,"/patchdists_b",basemap_id,"_p",popmap_id,".RData"))
     writeRaster(K_rast,
@@ -179,7 +182,7 @@ f_SimPtsOnMap <- function(reef_sf=NULL,base_rast=NULL,n_anems=50,samp_type="rand
 # Outputs:
 #   q_rast: SpatRaster object with two layers: reef (0 for open water and 1 for reef) and q (habitat quality)
 f_GenerateHabQual <- function(q_autocorr,target_dist='identity',plot_flag=FALSE,experiment_folder=NULL,
-                              basemap_id=NULL,qmap_id=NULL){
+                              basemap_id=NULL,qmap_id=NULL, variog_fit=TRUE, variog_width=10,variog_cutoff=10000){
   # if a filepath was specified, load the saved base map. Otherwise it's ready to go.
   basemap_file <- paste0(experiment_folder,"/b",basemap_id,"/base_b",basemap_id)
   base_rast <- rast(paste0(basemap_file,".tif")) # load base_rast
@@ -213,18 +216,21 @@ f_GenerateHabQual <- function(q_autocorr,target_dist='identity',plot_flag=FALSE,
     print(g)
   }
   
-  # get variogram info
-  load(paste0(basemap_file,".RData")) # get reef_sf
-  sfc_patches <- sf::st_sample(reef_sf,units::drop_units(st_area(reef_sf)/1000))
-  spdf1 <- as_Spatial(sfc_patches)
-  spdf1$q <- terra::extract(q_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)$q
-  vgm1 <- gstat::variogram(q~1,data=spdf1,cressie=TRUE) # empirical variogram
-  vgmf <- gstat::fit.variogram(vgm1,gstat::vgm(c("Gau","Sph","Exp"))) # run several models, and pick the best one
-  #plot(vgm1,vgmf)
-  vgm_fit=list(range=vgmf$range[2],sill=vgmf$psill[2],SSErr=attr(vgmf,"SSErr"),
-               model=vgmf$model[2])
+  if(variog_fit==TRUE){
+    # get variogram info
+    load(paste0(basemap_file,".RData")) # get reef_sf
+    sfc_patches <- sf::st_sample(reef_sf,units::drop_units(st_area(reef_sf)/1000))
+    spdf1 <- as_Spatial(sfc_patches)
+    spdf1$q <- terra::extract(q_rast$q,vect(sfc_patches),xy=TRUE,search_radius=500)$q
+    vgm1 <- gstat::variogram(q~1,data=spdf1,cressie=TRUE,width=variog_width,cutoff=variog_cutoff) # empirical variogram
+    vgmf <- gstat::fit.variogram(vgm1,gstat::vgm(c("Gau","Sph","Exp"))) # run several models, and pick the best one
+    #plot(vgm1,vgmf)
+    vgm_fit=list(range=vgmf$range[2],sill=vgmf$psill[2],SSErr=attr(vgmf,"SSErr"),
+                 model=vgmf$model[2])
+    
+  } else vgm_fit=NULL
   
-  # only save data if 1) qmap_file is given, and 2) the basemap was previously saved
+  # only save data if qmap_id is given
   if(!is.null(qmap_id)){
     writeRaster(q_rast,filename=paste0(experiment_folder,"/b",basemap_id,"/qmap_b",basemap_id,"_q",qmap_id,".tif"),overwrite=TRUE)
   }
@@ -323,7 +329,7 @@ f_MakeHabitat <- function(qmapID=NULL,popmapID=NULL,experiment_folder=NULL){
   
   index_habs <- data.frame(hab_id=habID,basemap_id=basemapID,qmap_id=qmapID,
                               popmap_id=popmapID,npatch=npatch,q_autocorr_scale=qmap_row$range)
-  fwrite(index_habs,file=paste0(experiment_folder,"/index_habs.csv"))
+  fwrite(index_habs,file=paste0(experiment_folder,"/index_habs.csv"),append = TRUE)
 }
 
 
@@ -351,7 +357,7 @@ fracland <- function(k, h, p, binary = TRUE, plotflag = FALSE, rasterflag = FALS
   ## plotflag == if TRUE will plot a filled contour version of the matrix
   
   ## function call: testmap=land(6,1,.5,FALSE,TRUE)
-  library(sp)
+  #library(sp)
   
   # k <- 6 # Scalar-determines size of landscape
   A <- 2^k + 1  # Scalar-determines length of landscape matrix
@@ -432,7 +438,7 @@ fracland <- function(k, h, p, binary = TRUE, plotflag = FALSE, rasterflag = FALS
   #  }
   
   if (rasterflag) {
-    library(raster)
+    #library(raster)
     mapdat <- list()
     mapdat$x <- seq(minx+0.5*cellsize, by = cellsize, len = ncol(B))
     mapdat$y <- seq(miny+0.5*cellsize, by = cellsize, len = nrow(B))
@@ -442,4 +448,26 @@ fracland <- function(k, h, p, binary = TRUE, plotflag = FALSE, rasterflag = FALS
   }
   return(B)
   
+}
+
+f_plot_gamma <- function(alpha,theta,kern_xlim=10,...){
+  g <- ggplot()+
+    xlim(0,kern_xlim)+
+    geom_function(fun=dgamma, args=list(shape=alpha,scale=theta))+
+    labs(title=paste('alpha =',round(alpha,3),', theta =',round(theta,3)))
+  
+  print(g)
+}
+
+f_plot_gammas <- function(alpha=1,thetas,kern_xlim=10){
+  ggplot()+
+    xlim(0,kern_xlim)+
+    lapply(1:length(thetas), 
+           function(i){geom_function(fun=dgamma,
+                                     args=list(shape=alpha,scale=thetas[i]),
+                                     aes(color=factor(thetas[i])),
+                                     n=5001)})+
+    theme_minimal()+
+    ylim(0,0.25)+
+    labs(x='distance (km)',y='density',color="theta",title="Dispersal Kernels")
 }

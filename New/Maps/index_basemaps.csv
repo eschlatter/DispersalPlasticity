@@ -1,0 +1,7 @@
+basemap_id,description,area_km2
+1,5x5km uniform,25
+2,1x25km uniform,25
+3,Kimbe small,0.359585263454623
+4,Kimbe medium,16.027700265861
+5,5x5km corner patches,2
+6,"1x25km regular patches (5, 1.5km each)",7.50000007999977

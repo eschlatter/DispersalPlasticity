@@ -1,0 +1,10 @@
+popmap_id,basemap_id,description,density,npatch
+1,1,low density,8,200
+2,1,full density,800,20000
+3,2,low density,8,200
+4,2,full density,800,20000
+5,3,"full density, small Kimbe",800,288
+6,4,"low density, medium Kimbe",16,256
+7,4,"full density, medium Kimbe",800,12822
+8,5,full density,800,1600
+9,6,full density,800,6000

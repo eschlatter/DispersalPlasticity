@@ -3,9 +3,9 @@ library(data.table)
 library(parallel)
 
 #### User inputs ####
+habID <- 17
 repID <- 1
-habID <- 1
-output_flag="all"
+output_flag="lite"
 output_thin=1
 experiment_folder <- "New"  #name of directory where everything is stored
 seed_i <- NULL   #for re-running sims
@@ -15,17 +15,17 @@ notes <- NA   #can include a character string here with notes on the sim
 mu <- 0.001
 nav_rad <- 0.05
 adult_survival_prob <- 0
-base_fecund <- 2000
+base_fecund <- 20
 
 # sim parameters
 theta_start_min <- 0.005
 theta_start_max <- 0.005
 p_start_min <- 0
 p_start_max <- 0
-nsteps <- 1000
+nsteps <- 6000
 
 # sim options
-normalize_offspring=FALSE
+normalize_offspring=TRUE
 plasticity_on=FALSE
 
 #### Initial outputs ####
@@ -37,13 +37,16 @@ df_params <- data.frame(mu=mu,nav_rad=nav_rad,adult_survival_prob=adult_survival
                         nsteps=nsteps,output_thin=output_thin,
                         normalize_offspring=normalize_offspring,plasticity_on=plasticity_on)
 # Sim metadata
-simID <- paste0(format(Sys.time(),"%m%d%H%M"),sprintf("%05d", sample(99999,size=1)))
-# maybe include a line here to check that that simID hasn't been used before
+# generate simID
+while(exists("simID")==FALSE){
+  simID <- paste0(sprintf("%08d", sample(10000000:99999999,size=1)))
+  if(simID %in% read.csv(paste0(experiment_folder,"/_index_sims.csv"))$sim_id) rm(simID) # check that it hasn't been used already
+}
 simDate <- format(Sys.time(),"%Y_%m_%d %H:%M:%S")
 slurmJob <- as.numeric(Sys.getenv("SLURM_JOB_ID"))
 slurmTask <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 if(is.na(slurmTask)) slurmTask <- 1
-df_index <- data.frame(sim_id=simID,simDate=simDate,slurmJob=paste0(slurmJob,"_",slurmTask),
+df_index <- data.frame(sim_id=paste(simID),simDate=simDate,slurmJob=paste0(slurmJob,"_",slurmTask),
                        rep_id=repID,notes=notes)
 # Habitat info
 hab_row <- read.csv(paste0(experiment_folder,"/Maps/index_habs.csv")) |> 
@@ -240,14 +243,16 @@ for(t_i in 1:nsteps){
   colnames(comp_results) <- c("parent","patch")
   
   #### Mutation ####
-  comp_results$theta <- pop_df$theta[comp_results$parent] + rnorm(nrow(comp_results),mean=0,sd=sqrt(mu))
+  comp_results$theta <- pmax(pmin(pop_df$theta[comp_results$parent]+rnorm(nrow(comp_results),mean=0,sd=sqrt(mu)),
+                                theta_max),theta_min) # cap theta
+#  comp_results$theta <- pop_df$theta[comp_results$parent] + rnorm(nrow(comp_results),mean=0,sd=sqrt(mu))
   comp_results$p <- pop_df$p[comp_results$parent]+ rnorm(nrow(comp_results),mean=0,sd=sqrt(mu))
   
   #### Plasticity ####
   if(plasticity_on==TRUE){comp_results$eff_theta <- comp_results$theta+comp_results$p*(patch_locations$q[comp_results$patch]-0.5)
   } else comp_results$eff_theta <- comp_results$theta
   
-  pop_df <- rbind(pop_df[adults_survive,],comp_results[,c("patch","theta","p","eff_theta")])
+  pop_df <- rbind(pop_df[adults_survive,c("patch","theta","p","eff_theta")],comp_results[,c("patch","theta","p","eff_theta")])
   
   #### Output ####
   print(t_i)
@@ -319,7 +324,7 @@ g1 <- ggplot(filter(dat_out,metric=="theta"),aes(x=t_i,y=median))+
   geom_line()+
   geom_ribbon(aes(ymin=q05,ymax=q95),alpha=0.2)+
   labs(y="Theta (km)\n(median,5-95%)",x=NULL)+
-  geom_hline(yintercept=c(linemin),linetype='dashed')
+  geom_hline(yintercept=c(linemin,linemax),linetype='dashed')
 
 g2 <- ggplot(filter(dat_out,metric=="p"),aes(x=t_i,y=median))+
   geom_line()+

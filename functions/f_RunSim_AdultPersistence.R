@@ -3,7 +3,7 @@
 #   params: list of biological and simulation parameters
 #   hab_params: list of habitat-related parameters and objects; output of f_MakeHabitat
 #   output_flag: "all" (npatch x ngroup x nsteps array of abundances) or "lite" (summary stats only for each timestep)
-f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","kern","sp_struct"),
+f_RunSim_AdultPersistence <- function(params, hab_params, keep=list("abund","p","kern","sp_struct"),
                                      output_flag="all",show_plot=FALSE,output_thin=1,output_file=NA,run_i=1,
                                      connmat_folder=NA,connmat_format="fst",patchdist_file=NULL,
                                      connmat_size_GB=3.2,jobmem_GB=400,start_location="everywhere",normalize_connmats=FALSE,
@@ -100,7 +100,7 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   
   ## 7. Output first line of the summary stats file
   t_i=1
-  df_i <- data.frame(t_i=rep(t_i,4),metric=NA,mean=NA,var=NA,q05=NA,q25=NA,median=NA,q75=NA,q95=NA,MoranI=NA,corr_q=NA)
+  df_i <- data.frame(t_i=rep(t_i,4),metric=NA,mean=NA,var=NA,q05=NA,q25=NA,median=NA,q75=NA,q95=NA,corr_q=NA)
   
   ###### total abundance
   df_i[1,] <- data.frame(t_i=t_i,metric="abund",mean=NA,var=NA,q05=NA,q25=NA,median=sum(previous_pop),q75=NA,q95=NA,corr_q=NA)
@@ -155,6 +155,8 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
   
   fwrite(df_i,file=paste0(output_file,"_raw.csv"),append=TRUE)
   
+  to_patch <- vector(length = npatch)
+  
   ################ Simulate ###################
   interval_starttime <- proc.time()
   for(t_i in 2:nsteps){
@@ -177,6 +179,9 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
     
     ################## Reproduction and Dispersal and Mutation ##################
     pop_by_group <- colSums(previous_pop)
+    
+    # decide which anemones will have a vacancy for new larvae to settle this round
+    will_have_vacancy <- which(simDAG::rbernoulli(n=nrow(patch_locations),p=patch_locations$vac_prob))
     
     #print(paste0("timestep: ",t_i))
     for(g in which(pop_by_group>0)){
@@ -224,12 +229,15 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
         }
       }
       
-      to_patch <- (1-p_penalty)*patch_locations$b*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
+      occupied_patches <- which(patch_pops>0)
+      
+      # vector of contribution of the population of this group to each patch
+      to_patch[ ] <- NA # to_patch and temp_pop are just keeping track of larvae, so we'll keep the rows of occupied patches at NA.
+      to_patch[will_have_vacancy] <- (1-p_penalty)*(conn_mat[will_have_vacancy,occupied_patches,drop=FALSE] %*% (patch_pops[occupied_patches]*patch_locations$b[occupied_patches])) 
       # Pij_larvae[,g] <- to_patch
       
       # Divide up to_patch among parameter groups that are the result of mutation
       temp_pop[,g] <- (1-mu)*to_patch+temp_pop[,g]
-      
       for(mut_group in mutation_destinations[g,-1]){ # for each of the possible mutations. This doesn't need to be a for loop, but let's do some error checking first.
         temp_pop[,mut_group] <- (mu/6)*to_patch+temp_pop[,mut_group]
       }
@@ -241,11 +249,11 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
     # (with probability according to the current abundance of each group of param values in that patch)
     patch_abunds <- rowSums(temp_pop)
     fwrite(matrix(patch_abunds,nrow=1),file=paste0(output_file,"_patch_abunds.csv"),append=TRUE)
-    comp_results <- vapply(1:npatch,function(i) f_Competition(i_patch=i,patch_abunds=patch_abunds,patch_locations=patch_locations,
+    comp_results <- vapply(will_have_vacancy,function(i) f_Competition(i_patch=i,patch_abunds=patch_abunds,patch_locations=patch_locations,
                                                               temp_pop=temp_pop,ngroups=ngroups),
                            integer(ngroups))
-    new_pop <- t(comp_results)
-    previous_pop <- new_pop
+    previous_pop[will_have_vacancy,] <- t(comp_results)
+    new_pop <- previous_pop
     
     ################## Output ##################
     if(t_i %% max(1,round(nsteps/100)) == 0){
@@ -369,7 +377,7 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
           
           df_i[5,] <- data.frame(t_i=t_i,metric="larval_abund",mean=NA,var=NA,
                                  q05=NA,q25=NA,median=sum(patch_abunds),q75=NA,q95=NA,
-                                 MoranI=NA,corr_q=NA)
+                                 corr_q=NA)
           
           fwrite(df_i,file=paste0(output_file,"_raw.csv"),append=TRUE)
         }

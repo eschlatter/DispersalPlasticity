@@ -520,8 +520,8 @@ f_MakeHabitat <- function(nav_rad,hab_type="points",
 # right now this is boring, but maybe we'll want it to do something more interesting at some point
 # input: vector q
 # output: vector b
-f_q_to_b <- function(q){
-  b=20*as.integer(q)
+f_q_to_b <- function(q,base_fecund=20){
+  b=base_fecund*as.integer(q)
   return(b)
 }
 

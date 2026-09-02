@@ -1005,19 +1005,16 @@ f_Competition <- function(i_patch,patch_abunds,patch_locations,temp_pop,ngroups)
   # decide the maximum number of larvae that can settle in each patch, based on how many arrived (patch_abunds[i_patch])
   if(patch_abunds[i_patch]>0 & patch_abunds[i_patch]<1){
     n_setts <- rbinom(1,1,prob=patch_abunds[i_patch])
-  }
-  else if(patch_abunds[i_patch]>=1){
+  } else if(patch_abunds[i_patch]>=1){
     n_setts <- round(patch_abunds[i_patch])
-  }
-  else n_setts=0
+  } else n_setts=0
   
   # do the competition
   if(n_setts>0){ # if the patch isn't empty
     survivors=t(rmultinom(n=1,
                           size=min(n_setts,patch_locations$K[i_patch]), # choose groups for min(n_setts, K) settlers
                           prob = temp_pop[i_patch,])) # probability of each group being chosen depends on its current abundance
-  }
-  else survivors <- vector(mode='integer',length=ngroups)
+  } else survivors <- vector(mode='integer',length=ngroups)
   return(survivors)
 }
 

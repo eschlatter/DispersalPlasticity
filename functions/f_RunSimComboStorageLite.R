@@ -246,7 +246,8 @@ f_RunSimComboStorageLite <- function(params, hab_params, keep=list("abund","p","
         }
       }
       
-      to_patch <- (1-p_penalty)*patch_locations$b*(conn_mat %*% patch_pops) # vector of contribution of the population of this group to each patch
+#      to_patch <- (1-p_penalty)*patch_locations$b*(conn_mat %*% patch_pops) # Wrong!!!
+      to_patch <- (1-p_penalty)*(conn_mat %*% (patch_pops*patch_locations$b)) # vector of contribution of the population of this group to each patch
       # Pij_larvae[,g] <- to_patch
       
       # Divide up to_patch among parameter groups that are the result of mutation

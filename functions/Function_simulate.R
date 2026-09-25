@@ -1,40 +1,42 @@
-SimFn <- function(repID,
-                  experimentID,
-                  output_flag="lite",
-                  output_thin=1,
-                  experiment_folder,  #name of directory where everything is stored
-                  notes=NA,   #can include a character string here with notes on the sim
+### Core simulation function.
+
+SimFn <- function(repID, # for multi-simulation experiments, to track repetitions of the same parameter set
+                  experimentID, # for multi-simulation experiments, to track parameter sets
+                  output_flag="lite", # "all": keep data on all individuals at each timestep (can result in very large data files), or "lite": keep summary statistics
+                  output_thin=1, # for output_flag="all", interval between recorded timesteps (e.g., 1=every timestep is recorded; 10=every 10th timestep is recorded)
+                  experiment_folder,  # for multi-simulation experiments, name of relevant directory
+                  notes=NA,   # can include a character string here with notes on the sim
                   
                   # bio parameters
                   mutation_type, # "frequent" or "rare"
-                  mu,
-                  mu_theta,
-                  nav_rad,
-                  adult_survival_prob,
-                  base_fecund,
-                  habID,
+                  mu, # mutation magnitude (for plasticity)
+                  mu_theta, # mutation magnitude (for dispersal kernel parameter)
+                  nav_rad, # navigation radius (in km)
+                  adult_survival_prob, # adult survival probability
+                  base_fecund, # base fecundity; altered for each individual based on habitat quality
+                  habID, # habitat ID: specifies the base map and habitat quality layer to use for this simulation
                   
                   # sim parameters
-                  theta_start_min,
-                  theta_start_max,
-                  p_start_min,
-                  p_start_max,
-                  nsteps,
+                  theta_start_min, # minimum initial value (of uniform distribution) for dispersal kernel parameter
+                  theta_start_max, # maximum initial value (of uniform distribution) for dispersal kernel parameter
+                  p_start_min, # minimum initial value (of uniform distribution) for plasticity parameter
+                  p_start_max, # maximum initial value (of uniform distribution) for plasticity parameter
+                  nsteps, # number of timesteps to simulate
                   
                   # sim options
-                  normalize_offspring=FALSE,
-                  plasticity_on=TRUE,
-                  larval_output_by_theta=FALSE,
+                  normalize_offspring=FALSE, # option to force all individuals to produce the same number of offspring (useful for testing)
+                  plasticity_on=TRUE, # option to turn off plasticity (useful for testing)
+                  larval_output_by_theta=FALSE, # save generic data about the relationship between kernel parameter and larval output
                   
                   # disturbance parameters
                   Dp=0, # probability of disturbance (per timestep)
                   De=0, # extent of disturbance
                   Dl=1, # duration of disturbance
-                  disturb_method="circle",
+                  disturb_method="fractal", # disturbance type: fractal landscape shape (new shape generated for each disturbance) or circular (new center point chosen at random for each disturbance)
                   Dm=0.1 # magnitude of disturbance (fraction each habitat quality is multiplied by)
 ){
   
-  #### Initial outputs ####
+  #### ------------------------Simulation metadata -----------------------------
   # All params
   df_params <- data.frame(mu=mu,nav_rad=nav_rad,adult_survival_prob=adult_survival_prob,
                           base_fecund=base_fecund,
@@ -42,7 +44,6 @@ SimFn <- function(repID,
                           p_start_min=p_start_min,p_start_max=p_start_max,
                           nsteps=nsteps,output_thin=output_thin,
                           normalize_offspring=normalize_offspring,plasticity_on=plasticity_on)
-  # Sim metadata
   # generate simID
   while(exists("simID")==FALSE){
     simID <- paste0(sprintf("%08d", sample(10000000:99999999,size=1)))
@@ -72,7 +73,7 @@ SimFn <- function(repID,
   # set seed with simID
   set.seed(as.numeric(simID),kind="L'Ecuyer-CMRG")
   
-  #### Set up objects ####
+  #### -------------------Set up and precalculate objects ----------------------
   starttime <- proc.time()
   numCores=max(1,parallelly::availableCores())
   
@@ -117,7 +118,7 @@ SimFn <- function(repID,
   overlap_discount <- 1/rowSums(patch_dists_ref<nav_rad_ref)
   # hist(overlap_discount,breaks=0.5*(1:(2*max(overlap_discount)+1)))
   
-  # initialize population
+  #### ------------------Initialize population ---------------------------------
   n_init <- round(0.75*nrow(patch_locations))
   pop_df <- data.table(patch=sample(patch_locations$id,n_init,replace = FALSE),
                        theta=runif(n = n_init,min = theta_start_min,max = theta_start_max),
@@ -131,7 +132,7 @@ SimFn <- function(repID,
   } else pop_df$eff_theta <- pop_df$theta
   
   
-  #### Save generic larval output data, if desired ####
+  #### ------------Save generic larval output data, if desired -----------------
   if(larval_output_by_theta==TRUE){
     df_thetas <- data.frame(theta=v_theta_bins,output_mean=NA,output_sd=NA)
     larvae_out <- matrix(nrow=nrow(patch_locations),ncol=nrow(pop_df))
@@ -149,14 +150,10 @@ SimFn <- function(repID,
       df_thetas$output_mean[th_i] <- mean(outs)
       df_thetas$output_sd[th_i] <- sd(outs)
     }
-    # 
-    # ggplot(df_thetas,aes(x=theta,y=output_mean))+geom_line()+geom_point()+
-    #   geom_ribbon(aes(ymin=output_mean-output_sd,ymax=output_mean+output_sd),alpha=0.2)
-    
     save(df_thetas,file=paste0(output_file,"_larval_output_by_theta.RData"))
   }
   
-  #### Simulation ####
+  #### ----------------------------Simulation ----------------------------------
   print("start simulation")
   print(proc.time()-starttime)
   interval_starttime <- proc.time()
@@ -171,7 +168,7 @@ SimFn <- function(repID,
     # create matrix to hold larvae
     larvae_out <- matrix(nrow=nrow(patch_locations),ncol=nrow(pop_df))
     
-    ##### Disturbance ####
+    ##### ---------------------Disturbance -------------------------------------
     # In anemones affected by disturbance, habitat quality is reduced (affects fecundity and plastic dispersal response)
     
     # check for an active disturbance. If there is one:
@@ -211,14 +208,14 @@ SimFn <- function(repID,
       patch_locations$b[disturbed_anems] <- Dm*patch_locations$b[disturbed_anems]
     }
     
-    #### Plasticity ####
+    #### ------------------------ Plasticity -----------------------------------
     if(plasticity_on=="multiplicative"){
       pop_df$eff_theta <- pop_df$theta*exp(2*pop_df$p*(patch_locations$q[pop_df$patch]-0.5)) # p has a multiplicative effect
     } else if(plasticity_on=="additive"| plasticity_on==TRUE){
       pop_df$eff_theta <- pop_df$theta+pop_df$p*(patch_locations$q[pop_df$patch]-0.5) # p has an additive effect
     } else pop_df$eff_theta <- pop_df$theta
     
-    #### Output adult trait values ####
+    #### ------------------ Output adult trait values --------------------------
     if(t_i %% output_thin == 0){
       # p
       p_quants <- quantile(pop_df$p, probs=c(0.05,0.25,0.5,0.75,0.95))
@@ -241,7 +238,7 @@ SimFn <- function(repID,
       fwrite(df_efftheta,file=paste0(output_file,"_summary.csv"),append=TRUE)
     }
     
-    ### Dispersal ####
+    ### --------------------------- Dispersal ----------------------------------
     for(adult_i in 1:nrow(pop_df)){
       # get its origin patch and effective theta value
       origin_patch <- pop_df$patch[adult_i]
@@ -270,11 +267,11 @@ SimFn <- function(repID,
       larvae_out <- larvae_out/rep(colSums(larvae_out),each=nrow(larvae_out))
     }
     
-    #### Reproduction ####
+    #### --------------------------- Reproduction ------------------------------
     # multiply number of larvae from each origin patch by that patch's fecundity (disturbed patches have zero fecundity)
     larvae_out <- larvae_out*matrix(rep(patch_locations$b[pop_df$patch],each=nrow(larvae_out)),nrow=nrow(larvae_out))
     
-    #### Adult mortality ####
+    #### -------------------------- Adult mortality ----------------------------
     # decide which adults will survive to the next generation: 1 for survival, 0 for death
     # INDEXED AS ROWS OF pop_df!
     adults_survive <- rbinom(nrow(pop_df),1,adult_survival_prob)
@@ -284,7 +281,7 @@ SimFn <- function(repID,
     will_have_vacancy[pop_df$patch] <- !adults_survive
     will_have_vacancy <- which(will_have_vacancy==1)
     
-    #### Competition ####
+    #### --------------------------- Competition -------------------------------
     patch_abunds <- rowSums(larvae_out)
     nadults=ncol(larvae_out)
     
@@ -317,7 +314,7 @@ SimFn <- function(repID,
     if(nrow(comp_results)==0) comp_results <- data.table(parent=integer(),patch=integer())
     colnames(comp_results) <- c("parent","patch")
     
-    #### Mutation (and trait inheritance) ####
+    #### ------------------ Mutation (and trait inheritance) -------------------
     if(mutation_type=="rare"){
       # # in this version, mu_theta and mu_p are mutation probabilities. The magnitudes of mutations are normally-distributed with mean=0 and sd=1. 
       theta_muts <- rbinom(nrow(comp_results),1,prob=mu_theta)
@@ -338,7 +335,7 @@ SimFn <- function(repID,
     comp_results$eff_theta <- NA
     pop_df <- rbind(pop_df[adults_survive,c("patch","theta","p","eff_theta","ancestor")],comp_results[,c("patch","theta","p","eff_theta","ancestor")])
     
-    #### Output ####
+    #### --------------------------------- Output ------------------------------
     if(t_i %% 100 == 0){
       print(t_i)
       print(proc.time()-interval_starttime)
@@ -346,7 +343,7 @@ SimFn <- function(repID,
     }
     
     if(output_flag=="all" & (t_i<=25 | (t_i %% output_thin) == 0)){
-    # if(t_i %in% c(seq(from=300, to=2000, by=300),seq(from=2000,to=3000,by=100))){
+      # if(t_i %in% c(seq(from=300, to=2000, by=300),seq(from=2000,to=3000,by=100))){
       export_mat <- pop_df
       export_mat$t_i <- t_i
       export_mat$q <- patch_locations$q[export_mat$patch]
@@ -375,8 +372,6 @@ SimFn <- function(repID,
         fwrite(df_larv,file=paste0(output_file,"_summary.csv"),append=TRUE)
       }
     }
-    
-    
   } # t_i
   
   return(simID)

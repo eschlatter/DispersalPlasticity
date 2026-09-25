@@ -13,7 +13,7 @@ source("functions/Function_simulate.R")
 source("functions/Functions_auxiliary.R")
 
 repID <- ifelse(is.na(as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))),1,as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID")))
-output_flag="all" # "lite" or "all"; isn't actually doing anything at this point -- we're outputting summary info at interval output_thin, and full pop info at an interval hard-coded in (I know, I know, but I don't want to add another parameter right now)
+output_flag="all"
 output_thin=1
 
 # Experiment info

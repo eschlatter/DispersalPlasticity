@@ -336,10 +336,10 @@ SimFn <- function(repID, # for multi-simulation experiments, to track repetition
     pop_df <- rbind(pop_df[adults_survive,c("patch","theta","p","eff_theta","ancestor")],comp_results[,c("patch","theta","p","eff_theta","ancestor")])
     
     #### --------------------------------- Output ------------------------------
-    if(t_i %% 100 == 0){
+    if(t_i %% max(1,round(nsteps/10)) == 0){
       print(t_i)
-      print(proc.time()-interval_starttime)
-      interval_starttime <- proc.time()  
+      # print(proc.time()-interval_starttime)
+      # interval_starttime <- proc.time()  
     }
     
     if(output_flag=="all" & (t_i<=25 | (t_i %% output_thin) == 0)){

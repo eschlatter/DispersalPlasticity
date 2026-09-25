@@ -7,3 +7,5 @@ A model simulating the evolution of marine larval dispersal and dispersal plasti
 Look here first:
 - Example model run and output: `RunSimFn_short.R`
 - Core simulation functions: `functions/Function_simulate.R`
+
+See the core simulation function for parameter definitions.

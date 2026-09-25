@@ -35,7 +35,7 @@ theta_start_min <- 0.005
 theta_start_max <- 140
 p_start_min <- -10
 p_start_max <- 10
-nsteps <- 300
+nsteps <- 100
 
 # sim options
 normalize_offspring=FALSE
@@ -95,7 +95,8 @@ df_all <- if(file.exists(paste0("output/raw/",simID,"_all.csv"))) read.csv(paste
 ggplot(df_summary,aes(x=t_i,y=median))+
   geom_ribbon(aes(ymin=q25,ymax=q75),alpha=0.2)+
   geom_line()+
-  facet_wrap(vars(metric),scales='free')
+  facet_wrap(vars(metric),scales='free')+
+  labs(title=paste0("Dynamics, ",simID))
 
 #### 2. Map of the population at the end
 experiment_i <- read.csv("maps/index_habs.csv") |> dplyr::filter(hab_id==habID)
@@ -149,4 +150,4 @@ grid.arrange(qmap,pmap,thetamap,effthetamap,q_v_p,q_v_theta,q_v_efftheta,
              layout_matrix=rbind(c(1,1,2,3,4),
                                  c(1,1,2,3,4),
                                  c(1,1,5,6,7)),
-             top=paste("Last timestep, ",simID))
+             top=paste("Last timestep,",simID))

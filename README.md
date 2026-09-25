@@ -1,9 +1,9 @@
 # DispersalPlasticity
 
-Written by E Lou Schlatter
+Written by Lou Schlatter
 
-A model simulating marine larval dispersal with plasticity.
+A model simulating the evolution of marine larval dispersal and dispersal plasticity.
 
 Look here first:
-- Example model run and output: `3_Run_Sims.R`
-- Core simulation functions: `functions/f_RunMatrixLoop.R`
+- Example model run and output: `RunSimFn_short.R`
+- Core simulation functions: `functions/Function_simulate.R`
